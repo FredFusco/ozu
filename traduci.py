@@ -57,7 +57,7 @@ def argomenti():
     p.add_argument("file", nargs="*", type=Path, help="sottotitoli (.srt .vtt .ass .ssa) o video con sottotitoli")
     p.add_argument("--motore", choices=motori.ORDINE, default=motori.PREDEFINITO)
     p.add_argument("--modello", default=None, help="modello di Claude (claude-fable-5-1, claude-opus-5-5) "
-                                                    "o di Ollama (predefinito: qwen3-vl:30b-a3b-instruct)")
+                                                    "o di Ollama (predefinito: gemma4:26b)")
     p.add_argument("--da", dest="lingua_sub", default="auto", help="lingua dei sottotitoli (es. en)")
     p.add_argument("--audio", dest="lingua_audio", default="auto", help="lingua parlata nel film (es. ja, zh, pt-BR)")
     p.add_argument("--note", default="", help="indicazioni per l'adattatore (Claude e modello locale)")

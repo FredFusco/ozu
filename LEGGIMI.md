@@ -2,7 +2,7 @@
 
 Traduce in italiano i sottotitoli di un film da qualsiasi lingua, lavorando come un adattatore che ha visto tutto il film:
 
-Lo fa gratis con un modello locale (Qwen3-VL 30B in Ollama, lo stesso di Vertov e Murnau) o, a pagamento, con Claude. Il procedimento è lo stesso:
+Lo fa gratis con un modello locale (Gemma 4 26B in Ollama) o, a pagamento, con Claude. Il procedimento è lo stesso:
 
 - **Contesto:** il modello legge l'intero copione e compila la *scheda del film* (personaggi, rapporti e registro tu/lei/voi, glossario, errori del file originale), che si può correggere. Poi traduce con tutto il copione e la scheda davanti, quindi nomi, registri e modi di dire restano coerenti dall'inizio alla fine.
 - **Lingua parlata:** se i sottotitoli sono inglesi ma il film è giapponese, cinese o portoghese, recupera in italiano le forme di cortesia e i toni che l'inglese appiattisce.
@@ -15,7 +15,7 @@ Formati: SRT, WebVTT, ASS/SSA e i sottotitoli testuali dentro MKV, MP4 e MOV (co
 
 | Motore | Quando |
 |---|---|
-| Modello locale | predefinito: gratuito e privato, su questo Mac (Ollama; circa 20–40 minuti per film) |
+| Modello locale | predefinito: gratuito e privato, su questo Mac (Ollama, Gemma 4 26B; circa 5–10 minuti per film) |
 | Claude Fable 5.1 | la qualità più alta, a pagamento (chiave API di Anthropic con credito) |
 | Claude Opus 5.5 | ottima qualità, a pagamento, costa meno |
 | DeepL | traduzione automatica (chiave DeepL, anche gratuita) |
@@ -38,7 +38,7 @@ Da Terminale:
 | Parametro | Cosa fa |
 |---|---|
 | `--motore` | `locale` (predefinito), `claude`, `deepl`, `google` |
-| `--modello` | per Claude `claude-fable-5-1` o `claude-opus-5-5`; per il modello locale un nome di Ollama (predefinito `qwen3-vl:30b-a3b-instruct`) |
+| `--modello` | per Claude `claude-fable-5-1` o `claude-opus-5-5`; per il modello locale un nome di Ollama (predefinito `gemma4:26b`) |
 | `--da` | lingua dei sottotitoli (predefinito: automatica) |
 | `--audio` | lingua parlata nel film (es. `ja`, `zh`, `pt-BR`) |
 | `--note`, `--note-file` | indicazioni per l'adattatore |
@@ -52,7 +52,7 @@ Se l'elaborazione si interrompe, rilanciando lo stesso comando riparte da dove s
 
 ## Insieme a Vertov e Murnau
 
-Usano lo stesso modello con un contesto diverso, quindi se lavorassero insieme Ollama lo ricaricherebbe di continuo. Ozu cede il passo: prima di ogni richiesta al modello controlla se Vertov o Murnau stanno lavorando (dalla loro finestra, porte 8765 e 8766, o dal processo `descrivi.py` / `murnau.py`) e aspetta. Le sue richieste tengono il modello in memoria 5 minuti invece di 30. A fine lavoro, se fermato o se Ozu viene chiuso, toglie dalla memoria la copia del modello caricata da lui, se nessun altro la sta usando. Se l'app si chiude in modo anomalo, `traduci.py` se ne accorge e si ferma da solo.
+Usano Ollama con un altro modello (Qwen3-VL 30B), quindi se lavorassero insieme Ollama passerebbe di continuo da un modello all'altro. Ozu cede il passo: prima di ogni richiesta al modello controlla se Vertov o Murnau stanno lavorando (dalla loro finestra, porte 8765 e 8766, o dal processo `descrivi.py` / `murnau.py`) e aspetta. Le sue richieste tengono il modello in memoria 5 minuti invece di 30. A fine lavoro, se fermato o se Ozu viene chiuso, toglie dalla memoria la copia del modello caricata da lui, se nessun altro la sta usando. Se l'app si chiude in modo anomalo, `traduci.py` se ne accorge e si ferma da solo.
 
 ## Struttura
 

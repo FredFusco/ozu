@@ -392,7 +392,7 @@ function disegna() {
   $("#avvia-scheda").hidden = !adatta;
   $("#motore-spiega").textContent = (!pre.motori[p.motore]
     ? `${NOMI_MOTORI[p.motore]} non è configurato: verrà usato ${NOMI_MOTORI[usato]}. ` : "")
-    + (usato === "locale" ? `Gratuito e privato: ${pre.modello_locale} gira su questo Mac con Ollama, come in Vertov. Legge tutto il film, prepara la scheda e adatta i sottotitoli correggendo gli errori OCR. Per un film servono circa 20–40 minuti.`
+    + (usato === "locale" ? `Gratuito e privato: ${pre.modello_locale} gira su questo Mac con Ollama. Legge tutto il film, prepara la scheda e adatta i sottotitoli correggendo gli errori OCR. Per un film servono circa 5–10 minuti.`
     : usato === "claude" ? "Claude legge tutto il film, prepara la scheda e traduce con quel contesto, correggendo gli errori OCR. È il più accurato, ma si paga a consumo: qualche dollaro per film."
     : usato === "deepl" ? "Traduzione automatica con le battute precedenti come contesto: veloce, ma senza scheda né adattamento." : "Traduzione automatica riga per riga: da usare solo se gli altri motori non sono disponibili.");
   $("#dove-uscita").textContent = p.out ? p.out : "accanto agli originali";

@@ -1,14 +1,16 @@
 """Un modello che gira su questo Mac (Ollama) come motore dell'adattamento: vedi adattamento.py.
 
-Gratuito e privato: niente esce dal computer. È lo stesso modello che usano Vertov e
-Murnau (Qwen3-VL 30B, nella versione instruct: quella che ragiona è molto più lenta e
-traduce peggio i sottotitoli). Se Ollama è spento lo avvia; se il modello manca lo scarica.
+Gratuito e privato: niente esce dal computer. Il modello è Gemma 4 26B (Google): nel
+confronto del 2 novembre 2026 su Ilo Ilo e su un campione giapponese è stato il più
+veloce (circa 125 token al secondo, il doppio di Qwen3-VL 30B) e quello con l'italiano
+più naturale, a parità di errori, davanti a Qwen 3.5 35B, Qwen 3.8 27B e Gemma 4 31B.
+Ollama lo fa girare con il suo motore MLX. Se Ollama è spento lo avvia; se il modello
+manca lo scarica.
 
-Convivenza con Vertov e Murnau, che usano lo stesso modello con un contesto diverso: se
-lavorassero insieme a Ozu, Ollama ricaricherebbe il modello a ogni cambio e andrebbero
-tutti piano. Così Ozu cede il passo: prima di ogni richiesta chiede alle altre app se
-stanno lavorando, e aspetta. Alla fine toglie il modello dalla memoria, se l'aveva
-caricato lui e nessun altro lo sta usando.
+Convivenza con Vertov e Murnau, che usano Ollama con un altro modello: se lavorassero
+insieme a Ozu, Ollama passerebbe da un modello all'altro e andrebbero tutti piano. Così
+Ozu cede il passo: prima di ogni richiesta chiede alle altre app se stanno lavorando, e
+aspetta. Alla fine toglie il suo modello dalla memoria, se nessun altro lavora.
 """
 
 import copy
@@ -25,8 +27,8 @@ import adattamento
 import progresso
 
 OLLAMA = "http://localhost:11434"
-MODELLO = "qwen3-vl:30b-a3b-instruct"
-NOME = "Qwen3-VL 30B"
+MODELLO = "gemma4:26b"
+NOME = "Gemma 4 26B"
 # Le altre app della famiglia e la porta della loro interfaccia (vedi i loro app.py).
 ALTRE_APP = {"Vertov": 8765, "Murnau": 8766}
 # I loro programmi che usano il modello (vedi i loro app.py: li lanciano in un processo a parte).
@@ -127,6 +129,34 @@ def _con_limiti(schema: dict) -> dict:
     return schema
 
 
+def _rispetta_limiti(dati, schema: dict):
+    """Senza scrittura vincolata il modello potrebbe allungare liste e note: si ritagliano ai limiti
+    (gli stessi di _con_limiti) e si controlla che la risposta abbia la forma attesa."""
+    if not isinstance(dati, dict):
+        raise ValueError("la risposta non è un oggetto JSON")
+    for nome, campo in schema["properties"].items():
+        if nome not in dati:
+            raise KeyError(nome)
+        if campo.get("type") == "array":
+            if not isinstance(dati[nome], list):
+                raise ValueError(f"{nome} non è una lista")
+            interni = campo["items"]["properties"]
+            dati[nome] = [{k: (v[k] if interni[k]["type"] != "string" else str(v[k])[:LUNGHEZZA_NOTE * 4])
+                           for k in interni} for v in dati[nome][:MASSIMI.get(nome, None)]
+                          if isinstance(v, dict) and all(k in v for k in interni)]
+        elif campo.get("type") == "string":
+            dati[nome] = str(dati[nome])[:LUNGHEZZA_NOTE * 3]
+    return dati
+
+
+def _json_nel_testo(testo: str):
+    """Il primo oggetto JSON della risposta, anche se il modello l'ha messo tra ```json e ```."""
+    inizio, fine = testo.find("{"), testo.rfind("}")
+    if inizio < 0 or fine < inizio:
+        raise ValueError("nessun JSON nella risposta")
+    return json.loads(testo[inizio:fine + 1])
+
+
 def altre_app_al_lavoro() -> list:
     """Le app della famiglia che in questo momento hanno un'elaborazione in corso: lo dice la loro
     finestra, oppure il loro programma di analisi in esecuzione (anche se lanciato da Terminale)."""
@@ -186,6 +216,9 @@ class Sessione:
         self.nome = NOME if self.modello == MODELLO else self.modello
         self.costo = 0.0
         self.contesto = CONTESTO_MINIMO
+        # Con il motore MLX di Ollama la scrittura vincolata (xgrammar) può mancare: allora lo schema
+        # va nelle istruzioni e la risposta si controlla qui (vedi chiedi).
+        self.vincolato = True
         avvia_ollama()
         scarica_modello(self.modello)
 
@@ -210,16 +243,20 @@ class Sessione:
         self.contesto = max(self.contesto, self._contesto_per(len(testo)))
         # Tetto alla risposta: il doppio di quella attesa, mai oltre un terzo del contesto.
         tetto = min(self.contesto // 3, max(2048, attesi * 2 // CARATTERI_PER_TOKEN)) if attesi else -1
-        corpo = {"model": self.modello, "stream": True, "format": _con_limiti(schema), "think": False,
-                 "keep_alive": TENUTA, "options": {"num_ctx": self.contesto, "temperature": 0.3, "num_predict": tetto},
-                 "messages": [{"role": "system", "content": adattamento.SYSTEM},
-                              {"role": "user", "content": testo}]}
+        corpo = self._corpo(testo, schema, tetto)
         for tentativo in range(3):
             aspetta_il_turno()
             try:
-                return json.loads(self._scrivi(corpo, attesi, avanza))
+                risposta = self._scrivi(corpo, attesi, avanza)
+                if self.vincolato:
+                    return json.loads(risposta)
+                return _rispetta_limiti(_json_nel_testo(risposta), schema)
             except urllib.error.HTTPError as e:
                 dettaglio = e.read().decode(errors="replace")[:200]
+                if e.code == 501 and "structured output" in dettaglio and self.vincolato:
+                    self.vincolato = False  # vale per tutto il lavoro
+                    corpo = self._corpo(testo, schema, tetto)
+                    continue
                 # Una richiesta sbagliata (4xx) resterebbe sbagliata: inutile riprovare.
                 if tentativo == 2 or e.code < 500:
                     raise RuntimeError(f"Ollama ha risposto con un errore ({e.code}): {dettaglio}")
@@ -234,6 +271,20 @@ class Sessione:
                                        "per tre volte di seguito.")
                 corpo["options"]["temperature"] = 0.1
             time.sleep(3)
+
+    def _corpo(self, testo: str, schema: dict, tetto: int) -> dict:
+        corpo = {"model": self.modello, "stream": True, "think": False, "keep_alive": TENUTA,
+                 "options": {"num_ctx": self.contesto, "temperature": 0.3, "num_predict": tetto},
+                 "messages": [{"role": "system", "content": adattamento.SYSTEM},
+                              {"role": "user", "content": testo}]}
+        if self.vincolato:
+            corpo["format"] = _con_limiti(schema)
+        else:
+            corpo["messages"][1]["content"] += (
+                "\n\nRispondi solo con un oggetto JSON valido, senza altro testo, che segua questo schema "
+                "(rispetta i limiti di lunghezza delle liste e dei testi):\n"
+                + json.dumps(_con_limiti(schema), ensure_ascii=False))
+        return corpo
 
     def _scrivi(self, corpo: dict, attesi: int, avanza) -> str:
         """Riceve la risposta a pezzi mentre il modello la scrive: così si vede a che punto è."""
