@@ -1,0 +1,15 @@
+#!/bin/bash
+# Avvia Ozu con il suo ambiente Python (pywebview, anthropic).
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+DATI="$HOME/Library/Application Support/Ozu"
+mkdir -p "$DATI"
+PY="$HOME/.venvs/ozu/bin/python"
+# Primo avvio su un Mac nuovo: si prepara l'ambiente (una volta sola).
+if [ ! -x "$PY" ] || ! "$PY" -c "import webview, anthropic" 2>/dev/null; then
+  osascript -e 'display notification "Primo avvio: preparo Ozu, ci vuole un minuto." with title "Ozu"'
+  /opt/homebrew/bin/python3 -m venv "$HOME/.venvs/ozu" >> "$DATI/ozu.log" 2>&1 || python3 -m venv "$HOME/.venvs/ozu" >> "$DATI/ozu.log" 2>&1
+  "$PY" -m pip install -q --disable-pip-version-check pywebview anthropic >> "$DATI/ozu.log" 2>&1
+fi
+# La cartella che contiene Ozu.app è quella del programma.
+cd "$(dirname "$0")/../../.." || exit 1
+exec "$PY" app.py >> "$DATI/ozu.log" 2>&1

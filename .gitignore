@@ -1,0 +1,20 @@
+# Su GitHub va SOLO il programma Ozu. Si esclude tutto e si ammettono soltanto
+# i tipi di file del programma: così un sottotitolo, un video o una scheda di un
+# film finiti per sbaglio in questa cartella non vengono mai pubblicati.
+*
+!*/
+!.gitignore
+!*.py
+!interfaccia.html
+!aiuto.html
+!LEGGIMI.md
+!VERSIONE
+!aggiornamenti.json
+!icona_ozu.png
+!icona/genera_icona.py
+!Ozu.app/**
+# Mai, nemmeno se dentro ci fossero file ammessi:
+prova/
+dist/
+__pycache__/
+.DS_Store

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Guida di Ozu</title>
+<style>
+:root { --carta:#f3eee4; --inchiostro:#24262e; --tenue:#6a6660; --linea:#d9d0bf; --rosso:#b8321f;
+  --serif:"Hiragino Mincho ProN","Iowan Old Style","Baskerville","Palatino",Georgia,serif; }
+@media (prefers-color-scheme: dark) { :root { --carta:#1d1e23; --inchiostro:#efe9dd; --tenue:#a8a29a; --linea:#3b3c44; --rosso:#e0705a; } }
+body { margin:0; background:var(--carta); color:var(--inchiostro); font:15px/1.6 -apple-system,"Helvetica Neue",sans-serif; }
+main { max-width:720px; margin:0 auto; padding:28px 20px 60px; }
+h1 { font:500 32px/1.2 var(--serif); margin:0 0 4px; letter-spacing:.1em; }
+.sotto { color:var(--tenue); font:italic 15px var(--serif); margin:0 0 20px; }
+h2 { font:500 21px/1.3 var(--serif); margin:28px 0 8px; padding-top:10px; border-top:1px solid var(--linea); }
+kbd { font:12px ui-monospace,Menlo,monospace; border:1px solid var(--linea); border-radius:5px; padding:1px 5px; }
+li { margin:4px 0; }
+.nota { border-left:3px solid var(--rosso); padding-left:12px; color:var(--tenue); }
+</style></head><body><main>
+<h1>Guida di Ozu</h1>
+<p class="sotto">Sottotitoli in italiano da qualsiasi lingua, adattati come farebbe un traduttore che ha visto tutto il film</p>
+
+<h2>In tre gesti</h2>
+<ol>
+  <li><b>Trascina i sottotitoli</b> nella scheda 一 Sottotitoli: SRT, VTT, ASS, oppure un video MKV o MP4 che li contiene. Anche più file o un'intera cartella.</li>
+  <li><b>Indica la lingua parlata nel film</b> se è diversa da quella dei sottotitoli (per esempio sottotitoli inglesi di un film giapponese).</li>
+  <li><b>Premi «Traduci»</b> <kbd>⌘R</kbd>. Il file tradotto (<i>nome.it.srt</i>) viene salvato accanto all'originale. Un suono ti avvisa quando ha finito.</li>
+</ol>
+
+<h2>Come lavora l'adattamento</h2>
+<p>Il modello locale (gratuito, predefinito) e Claude (a pagamento) seguono lo stesso procedimento:</p>
+<ul>
+  <li><b>Legge tutto il film prima di tradurre</b> e compila la <i>scheda del film</i>: personaggi, chi si dà del tu e chi del lei, termini e modi di dire ricorrenti, errori del file originale.</li>
+  <li><b>Traduce con tutto il copione davanti</b> e con le battute già tradotte, così nomi, registri ed espressioni restano coerenti dall'inizio alla fine.</li>
+  <li><b>Pensa alla lingua parlata:</b> se il film è giapponese, cinese o portoghese, recupera in italiano le forme di cortesia e i toni che l'inglese appiattisce.</li>
+  <li><b>Rispetta i vincoli dei sottotitoli:</b> massimo due righe di 42 caratteri, velocità di lettura adeguata alla durata, stessi blocchi e stessi tempi, tag come <code>&lt;i&gt;</code> intatti. Le battute che sforano vengono riviste una seconda volta.</li>
+  <li><b>Corregge gli errori di OCR</b> del file originale («ifs» per «it's», «ls» per «Is») invece di tradurli alla lettera.</li>
+</ul>
+
+<h2>La scheda del film</h2>
+<p>Con <b>Prepara la scheda del film</b> <kbd>⇧⌘R</kbd> il modello legge il film e si ferma: nella scheda 二 puoi correggere nomi, registri e glossario prima di tradurre. Le tue correzioni hanno la precedenza. Se traduci senza prepararla, viene compilata da sé e la salva accanto ai sottotitoli (<i>nome.scheda.json</i>).</p>
+<p class="nota">Per una serie, metti tutti gli episodi nella stessa sessione: la scheda è unica e i personaggi restano coerenti tra un episodio e l'altro. Puoi anche riusare la scheda di una stagione con <i>File › Usa una scheda esistente…</i></p>
+
+<h2>Note per l'adattatore</h2>
+<p>Nel riquadro delle note puoi scrivere indicazioni libere: «Hiroshi e la madre si danno del lei», «"Sensei" si rende con "maestro"», «linguaggio volgare come nell'originale». Valgono per tutto il film.</p>
+
+<h2>Motori</h2>
+<ul>
+  <li><b>Modello locale</b> (predefinito): Qwen3-VL 30B, lo stesso di Vertov e Murnau, gira su questo Mac con Ollama. Gratuito e privato: niente esce dal computer. Un film richiede circa 20–40 minuti. Se Ollama è spento lo avvia da sé.</li>
+  <li><b>Claude Fable 5.1</b> e <b>Claude Opus 5.5:</b> la qualità più alta, ma a pagamento (chiave API di Anthropic con credito, in <i>Ozu › Impostazioni…</i> <kbd>⌘,</kbd>). Il costo stimato appare a fine lavoro.</li>
+  <li><b>DeepL:</b> buona traduzione automatica senza Claude, con le battute precedenti come contesto. Richiede una chiave DeepL (anche gratuita).</li>
+  <li><b>Google Traduttore:</b> funziona sempre, senza chiavi, ma traduce riga per riga ed è il meno affidabile.</li>
+</ul>
+<p class="nota">Se il motore scelto non è configurato, Ozu passa da solo al migliore disponibile e te lo dice. Senza chiavi, Ozu è completamente gratuito.</p>
+
+<h2>Interruzioni</h2>
+<p>Se fermi una traduzione o chiudi Ozu, rilanciandola riparte dal punto in cui si era fermata, senza ripagare le battute già tradotte. Ritradurre file già tradotti (per esempio dopo aver corretto la scheda) chiede conferma.</p>
+
+<h2>Insieme a Vertov e Murnau</h2>
+<p>Ozu usa lo stesso modello di Vertov e Murnau. Per non rallentarsi a vicenda, Ozu cede il passo: se Vertov o Murnau stanno lavorando (anche se lanciati da Terminale) Ozu mostra «In attesa» e riparte da solo quando hanno finito. Quando un lavoro di Ozu finisce, o quando chiudi Ozu, il modello viene tolto dalla memoria, se l'aveva caricato Ozu e nessun altro lo sta usando. Chiudendo Ozu si ferma anche la traduzione in corso: rilanciandola riprende da dove era arrivata.</p>
+
+<h2>Da Terminale</h2>
+<p>Lo stesso lavoro si può lanciare senza aprire l'app:</p>
+<pre>~/.venvs/ozu/bin/python traduci.py FILM.en.srt --audio ja</pre>
+<p>Opzioni: <code>--motore</code>, <code>--modello</code>, <code>--da</code>, <code>--audio</code>, <code>--note</code>, <code>--scheda</code>, <code>--solo-scheda</code>, <code>--out</code>. Con <code>--help</code> c'è l'elenco completo.</p>
+
+<h2>Limiti</h2>
+<ul>
+  <li>I sottotitoli a immagini (PGS, VobSub) non si possono tradurre: vanno prima convertiti in testo con un OCR.</li>
+  <li>Da un video si legge la prima traccia di sottotitoli testuali.</li>
+  <li>Nei file ASS si conservano gli stili e i tag all'inizio della battuta; quelli in mezzo alla frase si perdono.</li>
+</ul>
+
+<h2>Aggiornamenti e spazio</h2>
+<p><i>Ozu › Controlla aggiornamenti…</i> cerca nuove versioni di Ozu, di ffmpeg, di Ollama, del modello locale e delle librerie Python. <i>File › Libera spazio…</i> cancella registri, cache e traduzioni interrotte, mai i tuoi file.</p>
+</main></body></html>

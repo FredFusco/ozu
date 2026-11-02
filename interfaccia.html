@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ozu</title>
+<style>
+:root {
+  --carta: #f3eee4;
+  --carta-2: #e9e2d4;
+  --inchiostro: #24262e;
+  --tenue: #6a6660;
+  --linea: #d9d0bf;
+  --rosso: #b8321f;
+  --rosso-scuro: #962818;
+  --indaco: #2f4a63;
+  --ok: #4f7a5a;
+  --avviso: #a8741a;
+  --pannello: #faf7f1;
+  --ombra: 0 1px 2px rgba(36,38,46,.05), 0 6px 20px rgba(36,38,46,.05);
+  --serif: "Hiragino Mincho ProN", "Iowan Old Style", "Baskerville", "Palatino", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --carta: #1d1e23; --carta-2: #2a2b31; --inchiostro: #efe9dd; --tenue: #a8a29a;
+    --linea: #3b3c44; --rosso: #e0705a; --rosso-scuro: #f08a74; --indaco: #8fb0cf; --ok: #8fbf98; --avviso: #e0b25a;
+    --pannello: #25262c; --ombra: 0 6px 24px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"] {
+  --carta: #1d1e23; --carta-2: #2a2b31; --inchiostro: #efe9dd; --tenue: #a8a29a;
+  --linea: #3b3c44; --rosso: #e0705a; --rosso-scuro: #f08a74; --indaco: #8fb0cf; --ok: #8fbf98; --avviso: #e0b25a;
+  --pannello: #25262c; --ombra: 0 6px 24px rgba(0,0,0,.3);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--carta); color: var(--inchiostro); font: 15px/1.5 -apple-system, "Helvetica Neue", system-ui, sans-serif; }
+h2, .schede button, dialog h3 { font-family: var(--serif); }
+
+/* testata */
+header { position: relative; border-bottom: 1px solid var(--linea); padding: 18px 16px 0; }
+header::after { /* il bordo di un tatami */
+  content: ""; position: absolute; left: 0; right: 0; bottom: -5px; height: 4px; pointer-events: none;
+  border-top: 1px solid var(--indaco); border-bottom: 1px solid var(--indaco); opacity: .35;
+}
+.testata { max-width: 1040px; margin: 0 auto; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.testata > img { width: 54px; height: 54px; flex: none; }
+.titolo { font-family: var(--serif); font-size: 32px; font-weight: 600; letter-spacing: .32em; margin: 0; line-height: 1; }
+.titolo .sigillo { display: inline-block; font-size: 13px; letter-spacing: 0; writing-mode: vertical-rl; background: var(--rosso);
+  color: #fff; padding: 3px 2px; border-radius: 3px; vertical-align: 6px; margin-left: 2px; line-height: 1.05; }
+.sottotitolo { color: var(--tenue); margin: 6px 0 0; font-size: 13.5px; font-family: var(--serif); font-style: italic; }
+
+/* sessione */
+.sessione { margin-left: auto; display: flex; gap: 6px; align-items: center; position: relative; flex-wrap: wrap; }
+@media (max-width: 860px) { .sessione { margin-left: 0; width: 100%; } }
+.sessione label { font-size: 12px; color: var(--tenue); font-family: var(--serif); font-style: italic; }
+.sessione input { font: 600 14px/1.2 -apple-system, system-ui, sans-serif; padding: 5px 8px; width: 220px; max-width: 50vw;
+  background: var(--pannello); color: var(--inchiostro); border: 1px solid var(--linea); border-radius: 8px; }
+.esito-sessione { font-size: 12px; color: var(--ok); min-width: 4em; }
+.elenco-sessioni { position: absolute; right: 0; top: calc(100% + 6px); width: min(420px, 92vw); max-height: 360px; overflow: auto;
+  background: var(--pannello); border: 1px solid var(--linea); border-radius: 10px; box-shadow: 0 10px 30px rgba(36,38,46,.16); z-index: 20; }
+.riga-sessione { display: flex; border-bottom: 1px solid var(--linea); }
+.riga-sessione button { background: none; border: 0; padding: 9px 12px; color: var(--inchiostro); font: inherit; cursor: pointer; text-align: left; }
+.riga-sessione > button:first-child { flex: 1; min-width: 0; }
+.riga-sessione button:hover { background: var(--carta-2); }
+.riga-sessione.attuale { box-shadow: inset 3px 0 0 var(--rosso); }
+.riga-sessione .n { font-weight: 600; display: block; }
+.riga-sessione .d { display: block; font-size: 12px; color: var(--tenue); }
+.riga-sessione .elimina { font-size: 12px; color: var(--tenue); }
+.riga-sessione .elimina:hover { color: var(--rosso); }
+.conferma-elimina { padding: 10px 12px; display: grid; gap: 6px; background: var(--carta); border-bottom: 1px solid var(--linea); font-size: 13px; }
+
+/* schede */
+nav.schede { max-width: 1040px; margin: 14px auto 0; display: flex; gap: 2px; overflow-x: auto; }
+.schede button { appearance: none; border: 1px solid transparent; border-bottom: 0; background: transparent; color: var(--tenue);
+  font-size: 17px; font-weight: 500; padding: 8px 18px 7px; margin-bottom: -1px; cursor: pointer; white-space: nowrap;
+  display: flex; align-items: baseline; gap: 8px; border-radius: 10px 10px 0 0; }
+.schede button:hover { color: var(--inchiostro); }
+.schede button .numero { color: var(--rosso); font-size: 18px; font-style: italic; }
+.schede button[aria-selected="true"] { background: var(--carta); color: var(--inchiostro); border-color: var(--linea); }
+.schede .in-corso { width: 7px; height: 7px; border-radius: 50%; background: var(--rosso); align-self: center; animation: pulsa 1.2s infinite; }
+@keyframes pulsa { 50% { opacity: .25; } }
+
+main { max-width: 1040px; margin: 0 auto; padding: 4px 16px 64px; }
+.prerequisiti { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--tenue); margin: 14px 0 0; }
+.pallino { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--linea); vertical-align: 1px; }
+.pallino.ok { background: var(--ok); }
+.pallino.attivo { background: var(--rosso); }
+.prerequisiti a { color: var(--indaco); cursor: pointer; }
+section.passo { background: var(--pannello); border: 1px solid var(--linea); border-radius: 14px; box-shadow: var(--ombra); margin-top: 18px; padding: 20px 22px 22px; }
+h2 { margin: 0 0 6px; font-size: 23px; font-weight: 500; }
+h4 { margin: 18px 0 6px; font-family: var(--serif); font-style: italic; font-weight: 400; color: var(--rosso); font-size: 16px; }
+.spiega { color: var(--tenue); margin: 0 0 14px; font-size: 14px; max-width: 74ch; }
+
+/* materiali */
+#zona { border: 1.5px dashed var(--linea); border-radius: 12px; padding: 18px; text-align: center; color: var(--tenue); transition: .15s; }
+#zona.sopra { border-color: var(--rosso); background: color-mix(in srgb, var(--rosso) 6%, transparent); }
+.elenco-file { margin-top: 10px; border-top: 1px solid var(--linea); }
+.voce-file { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--linea); }
+.voce-file .n { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
+.voce-file .n .fatto { color: var(--ok); font-weight: 400; font-size: 12.5px; margin-left: 6px; }
+.voce-file .n .manca { color: var(--rosso); font-weight: 400; font-size: 12.5px; margin-left: 6px; }
+.percorso { font: 12px/1.3 ui-monospace, "SF Mono", Menlo, monospace; color: var(--tenue); overflow-wrap: anywhere; grid-column: 1; }
+.esito-arrivo { font-size: 13px; color: var(--tenue); min-height: 1.3em; margin-top: 6px; }
+.esito-arrivo .problema { color: var(--avviso); }
+.griglia { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 16px; margin-top: 6px; }
+label.campo { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--tenue); }
+select, input[type=text], input[type=password], textarea { font: 14px/1.4 -apple-system, system-ui, sans-serif; padding: 7px 9px; border-radius: 8px;
+  border: 1px solid var(--linea); background: var(--carta); color: var(--inchiostro); width: 100%; }
+textarea { min-height: 84px; resize: vertical; }
+.motore-spiega { font-size: 13px; color: var(--tenue); margin-top: 6px; }
+.uscita { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--tenue); margin-top: 12px; }
+
+.bottone { appearance: none; border: 1px solid var(--linea); background: var(--pannello); color: var(--inchiostro);
+  font: 500 14px/1.2 -apple-system, system-ui, sans-serif; padding: 8px 14px; cursor: pointer; border-radius: 8px; transition: background .15s, border-color .15s; }
+.bottone:hover { background: var(--carta-2); border-color: var(--tenue); }
+.bottone.primario { background: var(--inchiostro); border-color: var(--inchiostro); color: var(--carta); font-size: 15px; padding: 10px 20px; }
+.bottone.primario:hover { background: var(--rosso); border-color: var(--rosso); }
+.bottone.piccolo { font-size: 12.5px; padding: 4px 10px; border-radius: 6px; }
+.bottone.pericolo { color: var(--rosso); }
+.bottone:disabled { opacity: .4; cursor: default; }
+.bottone:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .schede button:focus-visible { outline: 2px solid var(--rosso); outline-offset: 2px; }
+.riga-azioni { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+.riga-azioni .spinta { margin-left: auto; }
+.avviso { color: var(--rosso); font-size: 14px; font-style: italic; min-height: 1.4em; margin-top: 8px; }
+
+/* scheda del film */
+table.scheda { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+table.scheda th { text-align: left; font-weight: 600; color: var(--tenue); font-size: 12px; padding: 4px 6px; border-bottom: 1px solid var(--linea); }
+table.scheda td { border-bottom: 1px solid var(--linea); padding: 0; vertical-align: top; }
+table.scheda td[contenteditable] { padding: 6px; min-width: 6em; }
+table.scheda td[contenteditable]:focus { outline: 2px solid var(--rosso); outline-offset: -2px; background: var(--carta); }
+table.scheda td.togli { width: 1%; text-align: right; }
+table.scheda td.togli button { border: 0; background: none; color: var(--tenue); cursor: pointer; padding: 6px; font-size: 15px; }
+table.scheda td.togli button:hover { color: var(--rosso); }
+.aggiungi-riga { margin-top: 6px; }
+.vuoto { color: var(--tenue); font-style: italic; font-family: var(--serif); }
+
+/* traduzione */
+.fasi { display: grid; gap: 10px; margin-top: 10px; }
+.fase { display: grid; grid-template-columns: 160px 1fr 250px; gap: 12px; align-items: center; font-size: 14px; }
+.fase .nome { font-weight: 600; }
+.barra { height: 8px; border-radius: 4px; background: var(--carta-2); position: relative; overflow: hidden; }
+.barra > div { position: absolute; inset: 0 auto 0 0; background: var(--rosso); width: 0; transition: width .4s; border-radius: 4px; }
+.fase .cifre { font-variant-numeric: tabular-nums; color: var(--tenue); font-size: 13px; text-align: right; }
+.fase.principale .nome, .fase.principale .cifre { color: var(--inchiostro); font-weight: 600; }
+.fase.principale .barra { height: 12px; border-radius: 6px; }
+.schede .percento { font-size: 13px; color: var(--rosso); font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .fase { grid-template-columns: 1fr; gap: 4px; } .fase .cifre { text-align: left; } }
+.risultati { margin-top: 8px; border-top: 1px solid var(--linea); }
+.risultato { padding: 10px 0; border-bottom: 1px solid var(--linea); }
+.risultato .n { font-weight: 600; }
+.risultato .d { font-size: 13px; color: var(--tenue); }
+.risultato .errore { color: var(--rosso); font-size: 13px; }
+.risultato .azioni { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+details summary { cursor: pointer; color: var(--tenue); font-size: 13px; }
+details pre { max-height: 260px; overflow: auto; background: var(--carta); border: 1px solid var(--linea); border-radius: 8px; padding: 10px;
+  font-size: 12px; margin: 8px 0 0; white-space: pre-wrap; }
+.attenzione summary { color: var(--avviso); }
+
+/* finestre */
+dialog { border: 1px solid var(--linea); border-radius: 14px; background: var(--pannello); color: var(--inchiostro); padding: 22px; width: min(560px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+dialog::backdrop { background: rgba(36,38,46,.35); }
+dialog h3 { margin: 0 0 8px; font-weight: 500; font-size: 21px; }
+dialog .voce { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--linea); font-size: 14px; }
+dialog .voce .d { display: block; font-size: 12.5px; color: var(--tenue); }
+.nota { font-size: 12.5px; color: var(--tenue); }
+</style>
+</head>
+<body>
+<header>
+  <div class="testata">
+    <img src="/icona.png" alt="">
+    <div>
+      <h1 class="titolo">OZU <span class="sigillo" aria-hidden="true">小津</span></h1>
+      <p class="sottotitolo">Sottotitoli in italiano da qualsiasi lingua, adattati come farebbe un traduttore che ha visto tutto il film.</p>
+    </div>
+    <div class="sessione">
+      <label for="nome-sessione">Sessione</label>
+      <input id="nome-sessione" spellcheck="false" aria-label="Nome della sessione">
+      <button class="bottone piccolo" id="salva-sessione">Salva</button>
+      <button class="bottone piccolo" id="apri-sessioni" aria-haspopup="true">Sessioni ▾</button>
+      <button class="bottone piccolo" id="nuova-sessione">Nuova</button>
+      <span class="esito-sessione" id="esito-sessione"></span>
+      <div class="elenco-sessioni" id="elenco-sessioni" hidden></div>
+    </div>
+  </div>
+  <nav class="schede" role="tablist">
+    <button role="tab" data-vista="materiali" aria-selected="true"><span class="numero">一</span>Sottotitoli</button>
+    <button role="tab" data-vista="scheda" aria-selected="false"><span class="numero">二</span>Scheda del film</button>
+    <button role="tab" data-vista="traduzione" aria-selected="false"><span class="numero">三</span>Traduzione<span class="in-corso" id="pallino-lavoro" hidden></span><span class="percento" id="percento-lavoro"></span></button>
+  </nav>
+</header>
+
+<main>
+  <div class="prerequisiti" id="prerequisiti"></div>
+
+  <!-- 1. Sottotitoli -->
+  <div data-pannello="materiali">
+    <section class="passo">
+      <h2>Sottotitoli da tradurre</h2>
+      <p class="spiega">Trascina qui i file dei sottotitoli (SRT, VTT, ASS) o i video che li contengono (MKV, MP4). Più file insieme, per esempio gli episodi di una serie, condividono la stessa scheda: nomi e registri restano coerenti tra un episodio e l'altro.</p>
+      <div id="zona">Trascina qui file o cartelle</div>
+      <div class="riga-azioni" style="margin-top:10px">
+        <button class="bottone" id="scegli-file">Scegli i file…</button>
+        <button class="bottone" id="scegli-cartella">Aggiungi una cartella…</button>
+      </div>
+      <div class="esito-arrivo" id="esito-arrivo"></div>
+      <div class="elenco-file" id="elenco-file"></div>
+    </section>
+
+    <section class="passo">
+      <h2>Lingue e adattamento</h2>
+      <p class="spiega">Se i sottotitoli sono in inglese ma il film è parlato in un'altra lingua, indicala: l'adattamento recupera toni e forme di cortesia che l'inglese appiattisce.</p>
+      <div class="griglia">
+        <label class="campo">Lingua dei sottotitoli<select id="lingua_sub"></select></label>
+        <label class="campo">Lingua parlata nel film<select id="lingua_audio"></select></label>
+        <label class="campo">Motore
+          <select id="motore">
+            <option value="locale">Modello locale, gratuito (predefinito)</option>
+            <option value="claude:claude-fable-5-1">Claude Fable 5.1, massima qualità, a pagamento</option>
+            <option value="claude:claude-opus-5-5">Claude Opus 5.5, ottima qualità, a pagamento</option>
+            <option value="deepl">DeepL</option>
+            <option value="google">Google Traduttore, ultima scelta</option>
+          </select>
+        </label>
+      </div>
+      <div class="motore-spiega" id="motore-spiega"></div>
+      <div id="solo-claude">
+        <label class="campo" style="margin-top:12px">Note per l'adattatore (facoltative)
+          <textarea id="note" placeholder="Es.: Hiroshi e la madre si danno del lei. «Sensei» si rende con «maestro». Il film è ambientato negli anni Cinquanta."></textarea>
+        </label>
+      </div>
+      <div class="uscita">I file tradotti vanno <strong id="dove-uscita">accanto agli originali</strong>
+        <button class="bottone piccolo" id="scegli-uscita">Cambia…</button>
+        <button class="bottone piccolo" id="uscita-accanto" hidden>Accanto agli originali</button></div>
+      <div class="riga-azioni">
+        <span class="spinta"></span>
+        <button class="bottone" id="avvia-scheda">Prepara la scheda del film</button>
+        <button class="bottone primario" id="avvia-traduci">Traduci</button>
+      </div>
+      <div class="avviso" id="avviso-avvio"></div>
+    </section>
+  </div>
+
+  <!-- 2. Scheda del film -->
+  <div data-pannello="scheda" hidden>
+    <section class="passo">
+      <h2>Scheda del film</h2>
+      <p class="spiega">Il modello legge tutto il film e annota personaggi, chi si dà del tu e chi del lei, termini ricorrenti ed errori del file originale. Correggi quello che non ti convince: la traduzione seguirà la scheda. Se traduci senza prepararla, viene compilata da sé.</p>
+      <div id="scheda-assente" class="vuoto">Nessuna scheda per questa sessione.</div>
+      <div id="scheda-contenuto" hidden>
+        <div class="griglia">
+          <label class="campo">Genere e tono<textarea id="s-genere_e_tono"></textarea></label>
+          <label class="campo">Note per l'adattamento<textarea id="s-note_adattamento"></textarea></label>
+        </div>
+        <h4>Personaggi</h4><div id="t-personaggi"></div>
+        <h4>Rapporti e registro (tu, lei, voi)</h4><div id="t-rapporti_e_registro"></div>
+        <h4>Glossario</h4><div id="t-glossario"></div>
+        <h4>Errori del file originale</h4><div id="t-errori_sorgente"></div>
+        <p class="nota" id="scheda-percorso"></p>
+      </div>
+      <div class="riga-azioni">
+        <button class="bottone" id="rifai-scheda">Prepara la scheda del film</button>
+        <button class="bottone" id="usa-scheda">Usa una scheda esistente…</button>
+        <button class="bottone pericolo" id="dimentica-scheda" hidden>Non usare questa scheda</button>
+        <span class="spinta"></span>
+        <span class="esito-sessione" id="esito-scheda"></span>
+        <button class="bottone" id="salva-scheda" hidden>Salva le correzioni</button>
+        <button class="bottone primario" id="scheda-traduci" hidden>Traduci con questa scheda</button>
+      </div>
+      <div class="avviso" id="avviso-scheda"></div>
+    </section>
+  </div>
+
+  <!-- 3. Traduzione -->
+  <div data-pannello="traduzione" hidden>
+    <section class="passo" id="pannello-lavoro">
+      <h2 id="titolo-lavoro">Traduzione</h2>
+      <p class="spiega" id="spiega-lavoro">Quando avvii una traduzione, qui vedi a che punto è.</p>
+      <div class="fasi" id="fasi"></div>
+      <div class="riga-azioni">
+        <button class="bottone pericolo" id="ferma" hidden>Ferma</button>
+        <span class="nota" id="nota-lavoro"></span>
+      </div>
+      <details id="dettagli" style="margin-top:12px"><summary>Dettagli dell'elaborazione</summary><pre id="log"></pre></details>
+    </section>
+    <section class="passo">
+      <h2>Risultati</h2>
+      <div id="risultati-vuoto" class="vuoto">Ancora nessun file tradotto in questa sessione.</div>
+      <div class="risultati" id="risultati"></div>
+      <p class="nota" id="costo-sessione"></p>
+    </section>
+  </div>
+</main>
+
+<!-- Impostazioni -->
+<dialog id="d-impostazioni">
+  <h3>Impostazioni</h3>
+  <p class="nota">Le chiavi servono solo per i motori a pagamento o esterni: senza chiavi Ozu usa il modello locale, gratuito. Restano su questo Mac, in un file leggibile solo dal tuo utente.</p>
+  <label class="campo" style="margin-top:10px">Chiave API di Anthropic (per Claude)
+    <input type="password" id="k-anthropic" placeholder="sk-ant-…" autocomplete="off"></label>
+  <div class="nota" id="k-anthropic-stato"></div>
+  <label class="campo" style="margin-top:10px">Chiave API di DeepL (facoltativa)
+    <input type="password" id="k-deepl" placeholder="…:fx" autocomplete="off"></label>
+  <div class="nota" id="k-deepl-stato"></div>
+  <div class="avviso" id="avviso-impostazioni"></div>
+  <div class="riga-azioni"><span class="spinta"></span>
+    <button class="bottone" data-chiudi>Annulla</button><button class="bottone primario" id="salva-impostazioni">Salva</button></div>
+</dialog>
+
+<!-- Aggiornamenti -->
+<dialog id="d-aggiornamenti">
+  <h3>Aggiornamenti</h3>
+  <p class="nota" id="agg-stato"></p>
+  <div id="agg-voci"></div>
+  <div class="fase" id="agg-avanz" hidden style="margin-top:12px"><span class="nome" id="agg-fase"></span><div class="barra"><div id="agg-barra"></div></div><span class="cifre" id="agg-cifre"></span></div>
+  <label class="nota" style="display:flex;gap:6px;margin-top:12px"><input type="checkbox" id="agg-automatico"> Controlla da solo una volta al giorno</label>
+  <div class="riga-azioni"><span class="spinta"></span>
+    <button class="bottone" id="agg-salta" hidden>Salta questi</button>
+    <button class="bottone" data-chiudi>Chiudi</button>
+    <button class="bottone primario" id="agg-installa" hidden>Installa</button>
+    <button class="bottone primario" id="agg-riavvia" hidden>Riavvia Ozu</button></div>
+</dialog>
+
+<!-- Libera spazio -->
+<dialog id="d-pulizia">
+  <h3>Libera spazio</h3>
+  <p class="nota">Ozu non tocca mai i sottotitoli, le traduzioni, le schede o le sessioni.</p>
+  <div id="pul-voci"></div>
+  <div class="avviso" id="pul-esito"></div>
+  <div class="riga-azioni"><span class="spinta"></span>
+    <button class="bottone" data-chiudi>Chiudi</button><button class="bottone primario" id="pul-cancella">Cancella</button></div>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const nome = p => p.split("/").pop();
+const NOMI_MOTORI = {claude: "Claude", locale: "Modello locale", deepl: "DeepL", google: "Google Traduttore"};
+const ORDINE = ["claude", "locale", "deepl", "google"];
+let STATO = null, LINGUE = {}, vista = "materiali", schedaModificata = false;
+
+async function api(percorso, dati) {
+  const r = await fetch(percorso, dati === undefined ? {} : {method: "POST", body: JSON.stringify(dati)});
+  const j = await r.json();
+  if (!r.ok || j.errore) throw new Error(j.errore || "Errore");
+  return j;
+}
+
+/* ---------- viste ---------- */
+function mostra(v) {
+  vista = v;
+  document.querySelectorAll(".schede button").forEach(b => b.setAttribute("aria-selected", b.dataset.vista === v));
+  document.querySelectorAll("[data-pannello]").forEach(p => p.hidden = p.dataset.pannello !== v);
+  try { localStorage.setItem("ozu-vista", v); } catch (e) {}
+}
+document.querySelectorAll(".schede button").forEach(b => b.onclick = () => mostra(b.dataset.vista));
+
+/* ---------- stato ---------- */
+async function aggiorna() {
+  try { STATO = await api("/api/stato"); } catch (e) { return; }
+  disegna();
+}
+
+function disegna() {
+  const p = STATO.progetto, l = STATO.lavoro, pre = STATO.prerequisiti;
+  if (document.activeElement !== $("#nome-sessione")) $("#nome-sessione").value = p.nome;
+  // pallini dei motori
+  const scelto = p.motore, usato = ORDINE.slice(ORDINE.indexOf(scelto)).find(m => pre.motori[m]);
+  const manca = m => m === "locale" ? " (serve Ollama)" : m === "google" ? "" : " (manca la chiave)";
+  $("#prerequisiti").innerHTML = ["locale", "claude", "deepl", "google"].map(m =>
+    `<span><span class="pallino ${m === usato ? "attivo" : pre.motori[m] ? "ok" : ""}"></span>${NOMI_MOTORI[m]}${m === "locale" && pre.motori[m] ? ` (${esc(pre.modello_locale)}${pre.locale_pronto ? "" : ", si avvia o si scarica al primo uso"})` : pre.motori[m] ? "" : manca(m)}</span>`).join("")
+    + (pre.ffmpeg ? "" : `<span><span class="pallino"></span>ffmpeg mancante: i video non si possono leggere</span>`)
+    + `<a id="link-impostazioni">Impostazioni…</a>`;
+  $("#link-impostazioni").onclick = apriImpostazioni;
+
+  // file
+  const esiti = p.esiti || {};
+  $("#elenco-file").innerHTML = p.file.map(f => {
+    const e = esiti[f], manca = STATO.mancanti.includes(f);
+    return `<div class="voce-file"><div class="n">${esc(nome(f))}${manca ? '<span class="manca">non trovato</span>' : e && e.uscita ? '<span class="fatto">tradotto</span>' : ""}</div>
+      <button class="bottone piccolo" data-togli="${esc(f)}">Togli</button><div class="percorso">${esc(f)}</div></div>`;
+  }).join("");
+  document.querySelectorAll("[data-togli]").forEach(b => b.onclick = async () => { await api("/api/togli", {percorso: b.dataset.togli}); aggiorna(); });
+
+  // opzioni
+  for (const id of ["lingua_sub", "lingua_audio", "note"]) if (document.activeElement !== $("#" + id)) $("#" + id).value = p[id] || (id === "note" ? "" : "auto");
+  if (document.activeElement !== $("#motore")) $("#motore").value = p.motore === "claude" ? "claude:" + p.modello : p.motore;
+  const adatta = ["claude", "locale"].includes(usato);
+  $("#solo-claude").hidden = !adatta;
+  $("#avvia-scheda").hidden = !adatta;
+  $("#motore-spiega").textContent = (!pre.motori[p.motore]
+    ? `${NOMI_MOTORI[p.motore]} non è configurato: verrà usato ${NOMI_MOTORI[usato]}. ` : "")
+    + (usato === "locale" ? `Gratuito e privato: ${pre.modello_locale} gira su questo Mac con Ollama, come in Vertov. Legge tutto il film, prepara la scheda e adatta i sottotitoli correggendo gli errori OCR. Per un film servono circa 20–40 minuti.`
+    : usato === "claude" ? "Claude legge tutto il film, prepara la scheda e traduce con quel contesto, correggendo gli errori OCR. È il più accurato, ma si paga a consumo: qualche dollaro per film."
+    : usato === "deepl" ? "Traduzione automatica con le battute precedenti come contesto: veloce, ma senza scheda né adattamento." : "Traduzione automatica riga per riga: da usare solo se gli altri motori non sono disponibili.");
+  $("#dove-uscita").textContent = p.out ? p.out : "accanto agli originali";
+  $("#uscita-accanto").hidden = !p.out;
+  const occupato = l.attivo;
+  $("#avvia-traduci").disabled = $("#avvia-scheda").disabled = $("#rifai-scheda").disabled = occupato || !p.file.length;
+  $("#scheda-traduci").disabled = occupato || !p.file.length;
+
+  disegnaScheda();
+  disegnaLavoro();
+  disegnaRisultati();
+}
+
+/* ---------- scheda ---------- */
+const COLONNE = {
+  personaggi: [["nome", "Nome"], ["resa_italiana", "In italiano"], ["descrizione", "Chi è"]],
+  rapporti_e_registro: [["tra", "Tra"], ["registro", "Registro"], ["note", "Perché"]],
+  glossario: [["originale", "Originale"], ["italiano", "Italiano"], ["note", "Note"]],
+  errori_sorgente: [["errato", "Nel file"], ["corretto", "Corretto"]],
+};
+let schedaMostrata = null;
+
+function disegnaScheda() {
+  const s = STATO.scheda, p = STATO.progetto;
+  $("#scheda-assente").hidden = !!s;
+  $("#scheda-contenuto").hidden = !s;
+  $("#salva-scheda").hidden = !s;
+  $("#scheda-traduci").hidden = !s;
+  $("#dimentica-scheda").hidden = !p.scheda;
+  $("#scheda-assente").textContent = ["deepl", "google"].includes(p.motore)
+    ? "La scheda la preparano il modello locale o Claude: con " + NOMI_MOTORI[p.motore] + " non viene usata."
+    : "Nessuna scheda per questa sessione: preparala ora per controllarla, oppure traduci e verrà compilata da sé.";
+  const firma = JSON.stringify(s) + p.scheda;
+  if (!s || schedaModificata || firma === schedaMostrata) return;
+  schedaMostrata = firma;
+  $("#s-genere_e_tono").value = s.genere_e_tono || "";
+  $("#s-note_adattamento").value = s.note_adattamento || "";
+  for (const [chiave, colonne] of Object.entries(COLONNE)) {
+    const righe = s[chiave] || [];
+    $("#t-" + chiave).innerHTML = `<table class="scheda" data-chiave="${chiave}"><thead><tr>${colonne.map(c => `<th>${c[1]}</th>`).join("")}<th></th></tr></thead><tbody>
+      ${righe.map(r => riga(colonne, r)).join("")}</tbody></table>
+      <button class="bottone piccolo aggiungi-riga" data-aggiungi="${chiave}">Aggiungi</button>`;
+  }
+  $("#scheda-percorso").textContent = "Salvata in " + p.scheda;
+  collegaScheda();
+}
+const riga = (colonne, r = {}) => `<tr>${colonne.map(c => `<td contenteditable="plaintext-only" data-campo="${c[0]}">${esc(r[c[0]] || "")}</td>`).join("")}<td class="togli"><button title="Togli">×</button></td></tr>`;
+
+function collegaScheda() {
+  document.querySelectorAll("table.scheda td[contenteditable], #s-genere_e_tono, #s-note_adattamento").forEach(el => el.oninput = segnaModifica);
+  document.querySelectorAll("td.togli button").forEach(b => b.onclick = () => { b.closest("tr").remove(); segnaModifica(); });
+  document.querySelectorAll("[data-aggiungi]").forEach(b => b.onclick = () => {
+    const corpo = document.querySelector(`table[data-chiave="${b.dataset.aggiungi}"] tbody`);
+    corpo.insertAdjacentHTML("beforeend", riga(COLONNE[b.dataset.aggiungi]));
+    collegaScheda(); segnaModifica(); corpo.lastElementChild.firstElementChild.focus();
+  });
+}
+function segnaModifica() { schedaModificata = true; $("#esito-scheda").textContent = "modifiche non salvate"; $("#esito-scheda").style.color = "var(--avviso)"; }
+
+function leggiSchedaDalModulo() {
+  const s = {...STATO.scheda, genere_e_tono: $("#s-genere_e_tono").value, note_adattamento: $("#s-note_adattamento").value};
+  for (const [chiave, colonne] of Object.entries(COLONNE)) {
+    s[chiave] = [...document.querySelectorAll(`table[data-chiave="${chiave}"] tbody tr`)].map(tr =>
+      Object.fromEntries(colonne.map(c => [c[0], tr.querySelector(`[data-campo="${c[0]}"]`).textContent.trim()])))
+      .filter(r => Object.values(r).some(v => v));
+  }
+  return s;
+}
+async function salvaScheda() {
+  if (!schedaModificata) return;
+  const j = await api("/api/scheda", {azione: "salva", scheda: leggiSchedaDalModulo()});
+  schedaModificata = false; STATO.scheda = j.scheda; schedaMostrata = null;
+  $("#esito-scheda").textContent = "salvata"; $("#esito-scheda").style.color = "var(--ok)";
+  setTimeout(() => $("#esito-scheda").textContent = "", 2500);
+}
+$("#salva-scheda").onclick = () => salvaScheda().catch(e => $("#avviso-scheda").textContent = e.message);
+$("#usa-scheda").onclick = () => ozuComando("usa-scheda");
+$("#dimentica-scheda").onclick = async () => {
+  if (!confirm("Non usare più questa scheda in questa sessione? Il file resta dov'è.")) return;
+  await api("/api/scheda", {azione: "dimentica"}); schedaModificata = false; aggiorna();
+};
+
+/* ---------- lavoro ---------- */
+function durata(s) {
+  if (s == null) return "";
+  s = Math.round(s);
+  return s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min` : s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`;
+}
+const percento = a => a.totale ? Math.min(100, Math.floor(100 * a.fatti / a.totale)) : 0;
+function disegnaLavoro() {
+  const l = STATO.lavoro, mia = l.sessione === STATO.progetto.id;
+  $("#pallino-lavoro").hidden = !l.attivo;
+  $("#percento-lavoro").textContent = l.attivo && l.avanzamento.lavoro ? percento(l.avanzamento.lavoro) + "%" : "";
+  $("#ferma").hidden = !l.attivo;
+  if (!l.tipo || !mia) {
+    const e = STATO.progetto.ultimo_errore;
+    $("#titolo-lavoro").textContent = "Traduzione";
+    $("#spiega-lavoro").textContent = l.attivo ? "È in corso un lavoro in un'altra sessione."
+      : e ? `L'ultimo lavoro (${e.quando}) si è interrotto con un errore durante «${e.fase}». Le ultime righe sono nei dettagli qui sotto.`
+      : "Quando avvii una traduzione, qui vedi a che punto è.";
+    $("#fasi").innerHTML = ""; $("#nota-lavoro").textContent = "";
+    $("#log").textContent = !l.attivo && e ? e.righe.join("\n") : l.log.join("\n");
+    return;
+  }
+  $("#titolo-lavoro").textContent = l.tipo === "scheda" ? "Scheda del film" : "Traduzione";
+  const finito = !l.attivo;
+  $("#spiega-lavoro").textContent = l.attivo ? `${l.fase || "Avvio"}…` + (l.motore ? ` · ${l.motore}` : "")
+    : l.codice === 0 ? (l.tipo === "scheda" ? "Scheda pronta: controllala nella scheda 二." : "Fatto.")
+    : l.codice < 0 ? "Fermata. Rilanciandola riprende da dove si era interrotta." : "Si è interrotta con un errore: guarda i dettagli qui sotto.";
+  const righe = [], g = l.avanzamento.lavoro;
+  if (g) {
+    const tempo = finito ? "" : g.eta ? ` · ancora circa ${durata(g.eta)}` : " · calcolo del tempo…";
+    righe.push(["Totale", g.fatti, g.totale, `${percento(g)}%${tempo}`, true]);
+  }
+  if (l.file && l.file.totale > 1) righe.push(["File", l.file.numero - (finito ? 0 : 1), l.file.totale, l.file.nome]);
+  const b = l.avanzamento.battute;
+  if (b) righe.push(["Battute", b.fatti, b.totale, `${b.fatti} di ${b.totale}`]);
+  $("#fasi").innerHTML = righe.map(([n, f, t, testo, principale]) => `<div class="fase${principale ? " principale" : ""}"><span class="nome">${esc(n)}</span>
+    <div class="barra"><div style="width:${t ? 100 * f / t : 0}%"></div></div><span class="cifre">${esc(testo)}</span></div>`).join("");
+  $("#nota-lavoro").textContent = `in corso da ${durata(l.durata)}` + (l.costo ? ` · speso finora circa $${l.costo.toFixed(2)}` : "");
+  if (finito) $("#nota-lavoro").textContent = `durata ${durata(l.durata)}` + (l.costo ? ` · costo stimato $${l.costo.toFixed(2)}` : "");
+  const pre = $("#log"), giu = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 4;
+  pre.textContent = l.log.join("\n");
+  if (giu) pre.scrollTop = pre.scrollHeight;
+}
+
+function disegnaRisultati() {
+  const p = STATO.progetto, esiti = Object.values(p.esiti || {}).filter(e => p.file.includes(e.file));
+  $("#risultati-vuoto").hidden = esiti.length > 0;
+  $("#risultati").innerHTML = esiti.map(e => e.errore
+    ? `<div class="risultato"><div class="n">${esc(nome(e.file))}</div><div class="errore">${esc(e.errore)}</div></div>`
+    : `<div class="risultato"><div class="n">${esc(nome(e.uscita))}</div>
+       <div class="d">${e.battute} battute · ${esc(e.motore)} · ${esc(e.quando || "")}</div>
+       ${e.avvisi && e.avvisi.length ? `<details class="attenzione"><summary>${e.avvisi.length} battute ancora fuori dai limiti di lunghezza</summary><pre>${esc(e.avvisi.join("\n"))}</pre></details>` : ""}
+       <div class="azioni"><button class="bottone piccolo" data-apri="${esc(e.uscita)}">Apri</button><button class="bottone piccolo" data-mostra="${esc(e.uscita)}">Mostra nel Finder</button></div></div>`).join("");
+  document.querySelectorAll("[data-apri]").forEach(b => b.onclick = () => api("/api/apri", {percorso: b.dataset.apri}).catch(e => alert(e.message)));
+  document.querySelectorAll("[data-mostra]").forEach(b => b.onclick = () => api("/api/apri", {percorso: b.dataset.mostra, mostra: true}).catch(e => alert(e.message)));
+  $("#costo-sessione").textContent = p.costo ? `Speso con Claude in questa sessione: circa $${p.costo.toFixed(2)}` : "";
+}
+
+/* ---------- azioni ---------- */
+async function salvaOpzioni(dati) {
+  try { const j = await api("/api/progetto", dati); STATO.progetto = j.progetto; disegna(); } catch (e) { $("#avviso-avvio").textContent = e.message; }
+}
+$("#lingua_sub").onchange = e => salvaOpzioni({lingua_sub: e.target.value});
+$("#lingua_audio").onchange = e => salvaOpzioni({lingua_audio: e.target.value});
+$("#note").onchange = e => salvaOpzioni({note: e.target.value});
+$("#motore").onchange = e => { const [m, mod] = e.target.value.split(":"); salvaOpzioni(mod ? {motore: m, modello: mod} : {motore: m}); };
+$("#scegli-uscita").onclick = async () => { const j = await api("/api/cartella-uscita", {}); STATO.progetto = j.progetto; disegna(); };
+$("#uscita-accanto").onclick = () => salvaOpzioni({out: ""});
+
+async function avvia(fase) {
+  $("#avviso-avvio").textContent = $("#avviso-scheda").textContent = "";
+  try {
+    await api("/api/progetto", {note: $("#note").value});
+    if (schedaModificata && fase !== "scheda") await salvaScheda();
+    if (fase === "scheda" && STATO.scheda && !confirm("Preparare una scheda nuova? Quella attuale, con le tue correzioni, non verrà più usata (il file resta).")) return;
+    const j = await api("/api/avvia", {fase});
+    if (j.gia_tradotti) {
+      if (!confirm("Tutti i file di questa sessione sono già tradotti. Tradurli di nuovo (per esempio dopo aver corretto la scheda)? Le traduzioni attuali verranno sostituite.")) return;
+      await api("/api/avvia", {fase, tutti: true});
+    }
+    schedaModificata = false;
+    mostra("traduzione");
+    aggiorna();
+  } catch (e) { (vista === "scheda" ? $("#avviso-scheda") : $("#avviso-avvio")).textContent = e.message; }
+}
+$("#avvia-traduci").onclick = $("#scheda-traduci").onclick = () => avvia("traduzione");
+$("#avvia-scheda").onclick = $("#rifai-scheda").onclick = () => avvia("scheda");
+$("#ferma").onclick = () => api("/api/ferma", {});
+
+/* ---------- materiali ---------- */
+const zona = $("#zona");
+document.addEventListener("dragover", e => { e.preventDefault(); zona.classList.add("sopra"); });
+document.addEventListener("dragleave", e => { if (!e.relatedTarget) zona.classList.remove("sopra"); });
+document.addEventListener("drop", e => { e.preventDefault(); zona.classList.remove("sopra"); });  // i percorsi arrivano dal lato nativo
+function materialiAggiunti(esiti) {
+  const ok = esiti.filter(e => e.ok).length, problemi = esiti.filter(e => e.problema);
+  $("#esito-arrivo").innerHTML = (ok ? `Aggiunti ${ok} file. ` : "") + problemi.map(e => `<span class="problema">${esc(e.nome)}: ${esc(e.problema)}</span>`).join(" · ");
+  mostra("materiali"); aggiorna();
+}
+$("#scegli-file").onclick = async () => { const j = await api("/api/sfoglia", {tipo: "file"}); if (j.esiti.length) materialiAggiunti(j.esiti); };
+$("#scegli-cartella").onclick = async () => { const j = await api("/api/sfoglia", {tipo: "cartella"}); if (j.esiti.length) materialiAggiunti(j.esiti); };
+
+/* ---------- sessioni ---------- */
+function esitoSessione(t) { $("#esito-sessione").textContent = t; setTimeout(() => $("#esito-sessione").textContent = "", 2500); }
+async function salvaSessione() { await api("/api/sessione", {azione: "salva", nome: $("#nome-sessione").value}); esitoSessione("salvata"); aggiorna(); }
+$("#salva-sessione").onclick = salvaSessione;
+$("#nome-sessione").onkeydown = e => { if (e.key === "Enter") salvaSessione(); };
+async function nuovaSessione() {
+  try { await api("/api/sessione", {azione: "nuova"}); schedaModificata = false; schedaMostrata = null; mostra("materiali"); $("#esito-arrivo").textContent = ""; aggiorna(); }
+  catch (e) { alert(e.message); }
+}
+$("#nuova-sessione").onclick = nuovaSessione;
+async function elencoSessioni() {
+  const box = $("#elenco-sessioni");
+  if (!box.hidden) { box.hidden = true; return; }
+  const j = await api("/api/sessioni");
+  box.innerHTML = j.sessioni.map(s => `<div class="riga-sessione ${s.id === j.corrente ? "attuale" : ""}" data-id="${s.id}">
+    <button data-apri-sessione="${s.id}"><span class="n">${esc(s.nome)}</span><span class="d">${s.file} file · ${s.tradotti} tradotti · ${esc(s.modificata)}</span></button>
+    <button class="elimina" data-elimina="${s.id}" data-nome="${esc(s.nome)}">Elimina</button></div>`).join("") || `<div class="conferma-elimina">Nessuna sessione.</div>`;
+  box.hidden = false;
+  box.querySelectorAll("[data-apri-sessione]").forEach(b => b.onclick = async () => {
+    try { await api("/api/sessione", {azione: "apri", id: b.dataset.apriSessione}); box.hidden = true; schedaModificata = false; schedaMostrata = null; aggiorna(); }
+    catch (e) { alert(e.message); }
+  });
+  box.querySelectorAll("[data-elimina]").forEach(b => b.onclick = () => {
+    const r = b.closest(".riga-sessione");
+    if (r.nextElementSibling && r.nextElementSibling.classList.contains("conferma-elimina")) return;
+    r.insertAdjacentHTML("afterend", `<div class="conferma-elimina"><span>Eliminare la sessione <strong>${b.dataset.nome}</strong>? I sottotitoli originali non vengono toccati.</span>
+      <label style="display:flex;gap:6px"><input type="checkbox"> Sposta nel Cestino anche le traduzioni e la scheda</label>
+      <span><button class="bottone piccolo pericolo">Elimina</button> <button class="bottone piccolo">Annulla</button></span></div>`);
+    const c = r.nextElementSibling, [el, an] = c.querySelectorAll("button");
+    an.onclick = () => c.remove();
+    el.onclick = async () => {
+      try { const j = await api("/api/sessione", {azione: "elimina", id: b.dataset.elimina, risultati: c.querySelector("input").checked});
+        box.hidden = true; esitoSessione(j.spostati ? `eliminata, ${j.spostati} file nel Cestino` : "eliminata"); aggiorna(); }
+      catch (e) { alert(e.message); }
+    };
+  });
+}
+$("#apri-sessioni").onclick = elencoSessioni;
+document.addEventListener("click", e => { if (!e.target.closest(".sessione")) $("#elenco-sessioni").hidden = true; });
+
+/* ---------- finestre ---------- */
+document.querySelectorAll("[data-chiudi]").forEach(b => b.onclick = () => b.closest("dialog").close());
+
+async function apriImpostazioni() {
+  const j = await api("/api/impostazioni");
+  $("#k-anthropic").value = $("#k-deepl").value = "";
+  $("#k-anthropic-stato").textContent = j.da_ambiente.anthropic ? "Presa dalla variabile ANTHROPIC_API_KEY." : j.anthropic ? `Salvata (${j.anthropic}). Scrivine una nuova per sostituirla.` : "Non impostata.";
+  $("#k-deepl-stato").textContent = j.da_ambiente.deepl ? "Presa dalla variabile DEEPL_API_KEY." : j.deepl ? `Salvata (${j.deepl}). Scrivine una nuova per sostituirla.` : "Non impostata.";
+  $("#avviso-impostazioni").textContent = "";
+  $("#d-impostazioni").showModal();
+}
+$("#salva-impostazioni").onclick = async () => {
+  const dati = {};
+  if ($("#k-anthropic").value.trim()) dati.anthropic = $("#k-anthropic").value.trim();
+  if ($("#k-deepl").value.trim()) dati.deepl = $("#k-deepl").value.trim();
+  try { await api("/api/impostazioni", dati); $("#d-impostazioni").close(); aggiorna(); }
+  catch (e) { $("#avviso-impostazioni").textContent = e.message; }
+};
+
+let vociAggiornamento = [];
+async function apriAggiornamenti(manuale) {
+  const d = $("#d-aggiornamenti");
+  if (manuale) { $("#agg-stato").textContent = "Controllo…"; $("#agg-voci").innerHTML = ""; $("#agg-installa").hidden = $("#agg-salta").hidden = $("#agg-riavvia").hidden = true; d.showModal(); }
+  const info = await api("/api/aggiornamenti");
+  $("#agg-automatico").checked = info.automatico;
+  let j;
+  try { j = await api("/api/aggiornamenti", {azione: "controlla", manuale}); } catch (e) { $("#agg-stato").textContent = e.message; return; }
+  if (j.da_fare === false) return;
+  vociAggiornamento = j.voci || [];
+  if (!manuale && !vociAggiornamento.length) return;
+  $("#agg-stato").textContent = (vociAggiornamento.length ? "Sono disponibili aggiornamenti." : `Ozu ${j.versione} è aggiornato.`)
+    + (j.errori && j.errori.length ? " Non ho potuto controllare: " + j.errori.join("; ") : "") + (j.configurato ? "" : " (Indirizzo degli aggiornamenti di Ozu non configurato.)");
+  $("#agg-voci").innerHTML = vociAggiornamento.map((v, i) => `<label class="voce"><input type="checkbox" checked data-i="${i}">
+    <span><strong>${esc(v.nome)}</strong> ${esc(v.attuale)} → ${esc(v.nuova)}<span class="d">${esc(v.descrizione || "")}${v.novita && v.novita.length ? " · " + v.novita.map(esc).join(" · ") : ""}</span></span></label>`).join("");
+  $("#agg-installa").hidden = $("#agg-salta").hidden = !vociAggiornamento.length;
+  if (!d.open) d.showModal();
+}
+const scelteAgg = () => [...document.querySelectorAll("#agg-voci input:checked")].map(c => vociAggiornamento[c.dataset.i]);
+$("#agg-automatico").onchange = e => api("/api/aggiornamenti", {azione: "automatico", valore: e.target.checked});
+$("#agg-salta").onclick = async () => { await api("/api/aggiornamenti", {azione: "salta", voci: scelteAgg()}); $("#d-aggiornamenti").close(); };
+$("#agg-installa").onclick = async () => {
+  try { await api("/api/aggiornamenti", {azione: "installa", voci: scelteAgg()}); } catch (e) { $("#agg-stato").textContent = e.message; return; }
+  $("#agg-installa").hidden = $("#agg-salta").hidden = true; $("#agg-avanz").hidden = false;
+  const giro = setInterval(async () => {
+    const s = (await api("/api/aggiornamenti")).installazione;
+    $("#agg-fase").textContent = s.fase; $("#agg-cifre").textContent = s.totale ? `${s.fatti} / ${s.totale}` : "";
+    $("#agg-barra").style.width = s.totale ? (100 * s.fatti / s.totale) + "%" : "0";
+    if (s.fatto) {
+      clearInterval(giro); $("#agg-avanz").hidden = true;
+      $("#agg-stato").textContent = (s.riusciti.length ? "Aggiornati: " + s.riusciti.join(", ") + ". " : "") + (s.errore ? "Non riusciti: " + s.errore : "");
+      $("#agg-riavvia").hidden = !s.riavvia;
+    }
+  }, 700);
+};
+$("#agg-riavvia").onclick = () => api("/api/aggiornamenti", {azione: "riavvia"});
+
+async function apriPulizia() {
+  const j = await api("/api/pulizia");
+  const mb = b => b > 1e9 ? (b / 1e9).toFixed(1) + " GB" : (b / 1e6).toFixed(1) + " MB";
+  $("#pul-voci").innerHTML = j.voci.map(v => `<label class="voce"><input type="checkbox" value="${v.chiave}" ${v.consigliata ? "checked" : ""}>
+    <span><strong>${esc(v.nome)}</strong> · ${mb(v.byte)}<span class="d">${esc(v.spiega)}</span></span></label>`).join("") || `<p class="vuoto">Non c'è niente da liberare.</p>`;
+  $("#pul-esito").textContent = "";
+  $("#pul-cancella").hidden = !j.voci.length;
+  $("#d-pulizia").showModal();
+}
+$("#pul-cancella").onclick = async () => {
+  const chiavi = [...document.querySelectorAll("#pul-voci input:checked")].map(c => c.value);
+  try { const j = await api("/api/pulizia", {chiavi}); $("#pul-esito").textContent = `Liberati ${(j.liberati / 1e6).toFixed(1)} MB.`; $("#pul-esito").style.color = "var(--ok)"; $("#pul-cancella").hidden = true; }
+  catch (e) { $("#pul-esito").textContent = e.message; }
+};
+
+/* ---------- menu di macOS ---------- */
+async function ozuComando(c) {
+  try {
+    if (c === "nuova") return nuovaSessione();
+    if (c === "apri") return elencoSessioni();
+    if (c === "salva") return salvaSessione();
+    if (c === "elimina") { await elencoSessioni(); const r = document.querySelector(".riga-sessione.attuale .elimina"); if (r) r.click(); return; }
+    if (c === "aggiungi-file") return $("#scegli-file").click();
+    if (c === "aggiungi-cartella") return $("#scegli-cartella").click();
+    if (c === "usa-scheda") { const j = await api("/api/scheda", {azione: "usa"}); schedaModificata = false; schedaMostrata = null; mostra("scheda"); return aggiorna(); }
+    if (c === "pulizia") return apriPulizia();
+    if (c === "impostazioni") return apriImpostazioni();
+    if (c === "aggiornamenti") return apriAggiornamenti(true);
+    if (c.startsWith("vista-")) return mostra(c.slice(6));
+    if (c === "dettagli") { mostra("traduzione"); $("#dettagli").open = true; return; }
+    if (c === "scheda") return avvia("scheda");
+    if (c === "traduci") return avvia("traduzione");
+    if (c === "ferma") return api("/api/ferma", {});
+  } catch (e) { alert(e.message); }
+}
+
+/* ---------- avvio ---------- */
+(async () => {
+  LINGUE = await api("/api/lingue");
+  const opzioni = Object.entries(LINGUE).filter(([k]) => k !== "auto").map(([k, v]) => `<option value="${k}">${esc(v[0].toUpperCase() + v.slice(1))}</option>`).join("");
+  $("#lingua_sub").innerHTML = `<option value="auto">Rilevamento automatico</option>` + opzioni;
+  $("#lingua_audio").innerHTML = `<option value="auto">Come i sottotitoli / non so</option>` + opzioni;
+  try { const v = localStorage.getItem("ozu-vista"); if (v) mostra(v); } catch (e) {}
+  await aggiorna();
+  (function giro() { setTimeout(async () => { await aggiorna(); giro(); }, STATO && STATO.lavoro.attivo ? 1000 : 3000); })();
+  setTimeout(() => apriAggiornamenti(false).catch(() => {}), 4000);
+})();
+</script>
+</body>
+</html>
