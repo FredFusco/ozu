@@ -16,6 +16,9 @@ qualità più alta). DeepL e Google Traduttore restano come ripiego.
 viene prima della traduzione, e se trova sottotitoli validi la traduzione non parte
 (uscita con codice 10).
 
+Con il modello locale, finita la traduzione un secondo modello (Qwen 3.8 27B) rilegge tutto e
+corregge gli errori veri (vedi revisione.py); --senza-rilettura la salta.
+
 Il file tradotto (FILM.it.srt) e la scheda (FILM.scheda.json) vengono salvati accanto
 all'originale, o nella cartella indicata con --out. Se l'elaborazione si interrompe,
 rilanciando lo stesso comando riparte dal punto in cui si era fermata.
@@ -34,8 +37,10 @@ from pathlib import Path
 import adattamento
 import chiavi
 import motori
+import motore_locale
 import progresso
 import ricerca
+import revisione
 import sottotitoli as st
 
 PARZIALI = chiavi.DATI / "parziali"
@@ -73,6 +78,8 @@ def argomenti():
     p.add_argument("--scheda", type=Path, help="usa questa scheda del film invece di prepararne una nuova")
     p.add_argument("--salva-scheda", type=Path, help="dove salvare la scheda (predefinito: accanto al primo file)")
     p.add_argument("--solo-scheda", action="store_true", help="prepara la scheda e si ferma, senza tradurre")
+    p.add_argument("--senza-rilettura", action="store_true",
+                   help=f"con il modello locale, non far rileggere la traduzione a {revisione.NOME_REVISORE}")
     p.add_argument("--out", type=Path, help="cartella dei file tradotti (predefinito: accanto agli originali)")
     p.add_argument("--cerca", action="store_true",
                    help="prima di tradurre cerca sottotitoli italiani esistenti; se li trova si ferma")
@@ -228,7 +235,8 @@ def main() -> int:
     # Tutto il lavoro misurato in battute, per la percentuale e il tempo che resta.
     battute = sum(len(t) for _, t, *_ in film)
     peso = adattamento.peso_analisi(battute) if adatta and not a.scheda else 0
-    totale = peso + (0 if a.solo_scheda else battute)
+    rilettura = motore == "locale" and not a.senza_rilettura and not a.solo_scheda
+    totale = peso + (0 if a.solo_scheda else battute) + (revisione.PESO * battute if rilettura else 0)
     if adatta:
         if scheda is None:
             scheda = prepara_scheda(a, sessione, film, opzioni, totale, peso)
@@ -236,7 +244,7 @@ def main() -> int:
         if a.solo_scheda:
             return 0
 
-    esito, prima = 0, peso
+    esito, prima, tradotti_tutti = 0, peso, []
     for n, voce in enumerate(film, 1):
         percorso, testi, _, ricostruisci, estensione = voce
         segnale("file", {"numero": n, "totale": len(film), "nome": percorso.name})
@@ -259,8 +267,10 @@ def main() -> int:
             print(f"Salvato: {uscita}", flush=True)
             for avviso in avvisi[:30]:
                 print(f"  ! {avviso}", flush=True)
-            segnale("esito", {"file": str(percorso), "uscita": str(uscita), "battute": len(testi),
-                              "avvisi": avvisi, "motore": motori.NOMI[motore]})
+            dati = {"file": str(percorso), "uscita": str(uscita), "battute": len(testi), "avvisi": avvisi,
+                    "motore": motori.NOMI[motore]}
+            segnale("esito", dati)
+            tradotti_tutti.append((voce, uscita, tradotti, dati))
         except Exception as e:
             print(f"Errore con {percorso.name}: {e}", flush=True)
             segnale("esito", {"file": str(percorso), "errore": str(e)})
@@ -270,9 +280,55 @@ def main() -> int:
         if sessione:
             segnale("costo", round(sessione.costo, 2))
         prima += len(testi)
+    if rilettura and tradotti_tutti:
+        rileggi(sessione, scheda, opzioni, tradotti_tutti, prima, totale)
     if motore == "claude":
         print(f"Costo stimato: ${sessione.costo:.2f} ({sessione.nome})", flush=True)
     return esito
+
+
+# --------------------------------------------------------------------------
+# 4. Rilettura con un secondo modello (revisione.py)
+# --------------------------------------------------------------------------
+
+def rileggi(sessione, scheda: dict, opzioni: dict, tradotti_tutti: list, prima: int, totale: int) -> None:
+    """Dopo che tutti i file sono tradotti e salvati: così il modello cambia una volta sola, e se la
+    rilettura si interrompe o non riesce restano le traduzioni senza rilettura."""
+    if not motore_locale.pronto(revisione.REVISORE):
+        print(f"Rilettura saltata: il modello {revisione.NOME_REVISORE} non è scaricato "
+              f"(si scarica con: ollama pull {revisione.REVISORE}).", flush=True)
+        return
+    sessione.libera()  # il traduttore esce dalla memoria prima che entri il revisore
+    revisore = motore_locale.Sessione(revisione.REVISORE)
+    SESSIONI_DA_LIBERARE.append(revisore)
+    segnale("motore", f"{motori.NOMI['locale']} ({sessione.nome}, riletto da {revisione.NOME_REVISORE})")
+    revisore.prepara(max(revisione.caratteri_massimi(v[1], t, scheda, opzioni) for v, _, t, _ in tradotti_tutti))
+    for voce, uscita, tradotti, dati in tradotti_tutti:
+        percorso, testi, durate, ricostruisci, _ = voce
+        progresso.fase(f"Rilettura di {percorso.name}" if len(tradotti_tutti) > 1
+                       else f"Rilettura ({revisione.NOME_REVISORE})")
+
+        def avanza(fatti, quante, prima=prima):
+            progresso.avanzamento("battute", fatti, quante)
+            generale(prima + revisione.PESO * fatti, totale)
+
+        try:
+            riletti, modifiche = revisione.rivedi(revisore, testi, durate, tradotti, scheda, opzioni, avanza)
+        except RuntimeError as e:
+            print(f"Rilettura non riuscita per {percorso.name}: {e} Resta la traduzione senza rilettura.", flush=True)
+            continue
+        finally:
+            prima += revisione.PESO * len(testi)
+        if modifiche:
+            provvisorio = uscita.with_name(uscita.name + ".tmp")
+            provvisorio.write_text(ricostruisci(riletti), encoding="utf-8")
+            os.replace(provvisorio, uscita)
+        print(f"Rilettura: {len(modifiche)} battute corrette in {percorso.name}", flush=True)
+        for m in modifiche:
+            vecchia, nuova = (m[k].replace("\n", " / ") for k in ("prima", "dopo"))
+            print(f"  ✎ #{m['n']}: {vecchia} → {nuova} ({m['motivo']})", flush=True)
+        segnale("esito", {**dati, "avvisi": adattamento.avvisi(testi, riletti, durate), "rilette": modifiche,
+                          "revisore": revisione.NOME_REVISORE})
 
 
 def sorveglia_genitore() -> None:

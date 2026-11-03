@@ -233,6 +233,7 @@ dialog .voce .d { display: block; font-size: 12.5px; color: var(--tenue); }
           <textarea id="note" placeholder="Es.: Hiroshi e la madre si danno del lei. «Sensei» si rende con «maestro». Il film è ambientato negli anni Cinquanta."></textarea>
         </label>
       </div>
+      <label class="spunta-ricerca" id="riga-rilettura"><input type="checkbox" id="rilettura"> Dopo la traduzione, fai rileggere tutto a un secondo modello (<span id="nome-revisore">Qwen 3.8 27B</span>): qualche minuto in più, molti errori in meno</label>
       <label class="spunta-ricerca"><input type="checkbox" id="cerca_esistenti"> Prima di tradurre, cerca sottotitoli italiani già esistenti (OpenSubtitles, SUBDL)</label>
       <div class="uscita" id="riga-video">Video per la ricerca: <strong id="dove-video">quello accanto ai sottotitoli</strong>
         <button class="bottone piccolo" id="scegli-video">Scegli…</button>
@@ -326,6 +327,8 @@ dialog .voce .d { display: block; font-size: 12.5px; color: var(--tenue); }
   <div class="nota" id="k-opensubtitles_utente-stato"></div>
   <label class="campo">Chiave API di SUBDL<input type="password" id="k-subdl" autocomplete="off"></label>
   <div class="nota" id="k-subdl-stato"></div>
+  <h4>Uscita</h4>
+  <label class="spunta-ricerca"><input type="checkbox" id="conferma-uscita"> Chiedi conferma quando esci da Ozu</label>
   <div class="avviso" id="avviso-impostazioni"></div>
   <div class="riga-azioni"><span class="spinta"></span>
     <button class="bottone" data-chiudi>Annulla</button><button class="bottone primario" id="salva-impostazioni">Salva</button></div>
@@ -414,11 +417,14 @@ function disegna() {
   $("#avvia-scheda").hidden = !adatta;
   $("#motore-spiega").textContent = (!pre.motori[p.motore]
     ? `${NOMI_MOTORI[p.motore]} non è configurato: verrà usato ${NOMI_MOTORI[usato]}. ` : "")
-    + (usato === "locale" ? `Gratuito e privato: ${pre.modello_locale} gira su questo Mac con Ollama. Legge tutto il film, prepara la scheda e adatta i sottotitoli correggendo gli errori OCR. Per un film servono circa 5–10 minuti.`
+    + (usato === "locale" ? `Gratuito e privato: ${pre.modello_locale} gira su questo Mac con Ollama. Legge tutto il film, prepara la scheda e adatta i sottotitoli correggendo gli errori OCR. Per un film servono circa 8–10 minuti, compresa la rilettura.`
     : usato === "claude" ? "Claude legge tutto il film, prepara la scheda e traduce con quel contesto, correggendo gli errori OCR. È il più accurato, ma si paga a consumo: qualche dollaro per film."
     : usato === "deepl" ? "Traduzione automatica con le battute precedenti come contesto: veloce, ma senza scheda né adattamento." : "Traduzione automatica riga per riga: da usare solo se gli altri motori non sono disponibili.");
   $("#dove-uscita").textContent = p.out ? p.out : "accanto agli originali";
   $("#cerca_esistenti").checked = !!p.cerca_esistenti;
+  $("#rilettura").checked = p.rilettura !== false;
+  $("#riga-rilettura").hidden = usato !== "locale";
+  if (pre.revisore_locale) $("#nome-revisore").textContent = pre.revisore_locale;
   $("#dove-video").textContent = p.video ? nome(p.video) : "quello accanto ai sottotitoli";
   $("#video-accanto").hidden = !p.video;
   $("#uscita-accanto").hidden = !p.out;
@@ -569,7 +575,8 @@ function disegnaRisultati() {
     ? `<div class="risultato"><div class="n">${esc(nome(e.file))}</div><div class="errore">${esc(e.errore)}</div></div>`
     : `<div class="risultato"><div class="n">${esc(nome(e.uscita))}</div>
        <div class="d">${e.battute} battute · ${esc(e.motore)} · ${esc(e.quando || "")}</div>
-       ${e.avvisi && e.avvisi.length ? `<details class="attenzione"><summary>${e.avvisi.length} battute ancora fuori dai limiti di lunghezza</summary><pre>${esc(e.avvisi.join("\n"))}</pre></details>` : ""}
+       ${e.rilette && e.rilette.length ? `<details><summary>${e.rilette.length} battute corrette nella rilettura (${esc(e.revisore || "")})</summary><pre>${esc(e.rilette.map(m => `#${m.n}: ${m.prima.replace(/\n/g, " / ")} → ${m.dopo.replace(/\n/g, " / ")}  (${m.motivo})`).join("\n"))}</pre></details>` : e.rilette ? `<div class="d">Rilettura (${esc(e.revisore || "")}): nessuna correzione</div>` : ""}
+       ${e.avvisi && e.avvisi.length ? `<details class="attenzione"><summary>${e.avvisi.length} punti da controllare (lunghezza, velocità di lettura, battute fuori posto)</summary><pre>${esc(e.avvisi.join("\n"))}</pre></details>` : ""}
        <div class="azioni"><button class="bottone piccolo" data-apri="${esc(e.uscita)}">Apri</button><button class="bottone piccolo" data-mostra="${esc(e.uscita)}">Mostra nel Finder</button></div></div>`).join("");
   document.querySelectorAll("[data-apri]").forEach(b => b.onclick = () => api("/api/apri", {percorso: b.dataset.apri}).catch(e => alert(e.message)));
   document.querySelectorAll("[data-mostra]").forEach(b => b.onclick = () => api("/api/apri", {percorso: b.dataset.mostra, mostra: true}).catch(e => alert(e.message)));
@@ -587,6 +594,7 @@ $("#motore").onchange = e => { const [m, mod] = e.target.value.split(":"); salva
 $("#scegli-uscita").onclick = async () => { const j = await api("/api/cartella-uscita", {}); STATO.progetto = j.progetto; disegna(); };
 $("#uscita-accanto").onclick = () => salvaOpzioni({out: ""});
 $("#cerca_esistenti").onchange = e => salvaOpzioni({cerca_esistenti: e.target.checked});
+$("#rilettura").onchange = e => salvaOpzioni({rilettura: e.target.checked});
 $("#scegli-video").onclick = async () => { const j = await api("/api/scegli-video", {}); STATO.progetto = j.progetto; disegna(); };
 $("#video-accanto").onclick = () => salvaOpzioni({video: ""});
 $("#cerca-ora").onclick = async () => {
@@ -676,13 +684,14 @@ async function apriImpostazioni() {
   $("#k-opensubtitles-stato").textContent = stato("opensubtitles", "OPENSUBTITLES_API_KEY");
   $("#k-opensubtitles_utente-stato").textContent = "Utente: " + stato("opensubtitles_utente", "OPENSUBTITLES_USERNAME") + " Password: " + stato("opensubtitles_password", "OPENSUBTITLES_PASSWORD");
   $("#k-subdl-stato").textContent = stato("subdl", "SUBDL_API_KEY");
+  $("#conferma-uscita").checked = j.conferma_uscita;
   $("#k-anthropic-stato").textContent = j.da_ambiente.anthropic ? "Presa dalla variabile ANTHROPIC_API_KEY." : j.anthropic ? `Salvata (${j.anthropic}). Scrivine una nuova per sostituirla.` : "Non impostata.";
   $("#k-deepl-stato").textContent = j.da_ambiente.deepl ? "Presa dalla variabile DEEPL_API_KEY." : j.deepl ? `Salvata (${j.deepl}). Scrivine una nuova per sostituirla.` : "Non impostata.";
   $("#avviso-impostazioni").textContent = "";
   $("#d-impostazioni").showModal();
 }
 $("#salva-impostazioni").onclick = async () => {
-  const dati = {};
+  const dati = {conferma_uscita: $("#conferma-uscita").checked};
   if ($("#k-anthropic").value.trim()) dati.anthropic = $("#k-anthropic").value.trim();
   for (const k of ["deepl", "opensubtitles", "opensubtitles_utente", "opensubtitles_password", "subdl"])
     if ($("#k-" + k).value.trim()) dati[k] = $("#k-" + k).value.trim();

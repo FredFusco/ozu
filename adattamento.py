@@ -7,8 +7,10 @@
    copione originale e la scheda (con Claude in cache, quindi letti a basso costo), più le ultime
    battute già tradotte: nomi, registri ed espressioni restano coerenti dall'inizio
    alla fine.
-3. Revisione: le battute che violano i vincoli (righe troppo lunghe, più di due righe,
-   tag persi) tornano al modello per essere sistemate.
+3. Controllo dei posti: se in un tratto la traduzione è fuori posto (il modello ha saltato una
+   battuta e ha continuato con la numerazione sfasata), quel tratto si ritraduce.
+4. Revisione: le battute che violano i vincoli (righe troppo lunghe, più di due righe,
+   troppo veloci da leggere, tag persi) tornano al modello per essere sistemate.
 
 Il motore è un oggetto con il metodo chiedi(blocchi, schema) -> dict e l'attributo costo:
 vedi motore_claude.Sessione e motore_locale.Sessione.
@@ -18,7 +20,14 @@ import json
 
 import sottotitoli as st
 
+
+class RispostaNonValida(RuntimeError):
+    """Il modello ha risposto per tre volte con un JSON incompleto o non valido. Di solito la risposta era
+    troppo lunga ed è stata troncata: con meno battute per richiesta di solito passa."""
+
 BATTUTE_PER_BLOCCO = 120
+BLOCCO_MINIMO = 8  # sotto questa misura un blocco che non passa non si divide più
+BLOCCO_RITRADUZIONE = 40  # i tratti fuori posto si ritraducono in blocchi piccoli: il modello si perde meno
 CONTESTO_PRECEDENTE = 40
 # Stime per l'avanzamento e per lo spazio di lavoro: nella risposta ogni battuta occupa più o meno
 # quanto l'originale, più la cornice JSON; una battuta tipica è lunga circa 50 caratteri.
@@ -220,7 +229,7 @@ def traduci(sessione, testi: list, durate: list, opzioni: dict, scheda: dict, pr
                 break
             gia = sum(t is not None for t in tradotti)
             dentro = lambda f, gia=gia, quante=len(ids): progresso(gia + f * quante, n)
-            for i, t in _blocco(sessione, prefisso, testi, durate, tradotti, ids, dentro).items():
+            for i, t in _blocco_diviso(sessione, prefisso, testi, durate, tradotti, ids, dentro).items():
                 tradotti[i] = st.a_capo_automatico(t)
             ids = [i for i in ids if tradotti[i] is None]
         if ids:
@@ -229,7 +238,9 @@ def traduci(sessione, testi: list, durate: list, opzioni: dict, scheda: dict, pr
             salva_parziale({i: t for i, t in enumerate(tradotti) if t is not None})
         progresso(sum(t is not None for t in tradotti), n)
 
-    da_rivedere = {i: p for i in range(n) if (p := st.problemi(testi[i], tradotti[i]))}
+    _rimetti_a_posto(sessione, prefisso, testi, durate, tradotti, progresso)
+
+    da_rivedere = {i: p for i in range(n) if (p := st.problemi(testi[i], tradotti[i], durate[i]))}
     if da_rivedere:
         progresso(n, n, f"Revisione di {len(da_rivedere)} battute")
         ids = sorted(da_rivedere)
@@ -245,8 +256,57 @@ def traduci(sessione, testi: list, durate: list, opzioni: dict, scheda: dict, pr
                 if b["n"] - 1 in da_rivedere and b["t"].strip():
                     tradotti[b["n"] - 1] = st.a_capo_automatico(b["t"])
 
-    avvisi = [f"#{i + 1}: {'; '.join(p)}" for i in range(n) if (p := st.problemi(testi[i], tradotti[i]))]
-    return tradotti, avvisi
+    return tradotti, avvisi(testi, tradotti, durate)
+
+
+def avvisi(testi: list, tradotti: list, durate: list = None) -> list:
+    """Quello che resta da controllare a mano: vincoli non rispettati e tratti forse fuori posto."""
+    durate = durate or [None] * len(testi)
+    elenco = [f"#{i + 1}: {'; '.join(p)}" for i in range(len(testi))
+              if (p := st.problemi(testi[i], tradotti[i], durate[i]))]
+    return elenco + [f"#{a + 1}-#{b + 1}: la traduzione sembra fuori posto rispetto all'originale (una battuta "
+                     "saltata o in più): controlla" for a, b in st.sfasamenti(testi, tradotti)]
+
+
+def _rimetti_a_posto(sessione, prefisso, testi, durate, tradotti, progresso) -> None:
+    """Ritraduce i tratti fuori posto (st.sfasamenti), in blocchi piccoli, fino a due volte. Una battuta che
+    il modello non restituisce resta com'era."""
+    n = len(testi)
+    for _ in range(2):
+        tratti = st.sfasamenti(testi, tradotti)
+        if not tratti:
+            return
+        ids = sorted({i for a, b in tratti for i in range(max(0, a - 2), min(n, b + 3))})
+        progresso(n, n, f"Ritraduzione di {len(ids)} battute fuori posto")
+        prima = {i: tradotti[i] for i in ids}
+        for i in ids:
+            tradotti[i] = None
+        for k in range(0, len(ids), BLOCCO_RITRADUZIONE):
+            parte = ids[k:k + BLOCCO_RITRADUZIONE]
+            try:
+                for i, t in _blocco_diviso(sessione, prefisso, testi, durate, tradotti, parte).items():
+                    tradotti[i] = st.a_capo_automatico(t)
+            except RispostaNonValida:
+                pass
+        for i in ids:
+            if tradotti[i] is None:
+                tradotti[i] = prima[i]
+
+
+def _blocco_diviso(sessione, prefisso, testi, durate, tradotti, ids, avanza=None) -> dict:
+    """Come _blocco, ma se la risposta non è valida riprova con le due metà del blocco."""
+    try:
+        return _blocco(sessione, prefisso, testi, durate, tradotti, ids, avanza)
+    except RispostaNonValida:
+        if len(ids) < 2 * BLOCCO_MINIMO:
+            raise
+    meta = len(ids) // 2
+    print(f"Risposta non valida: riprovo con metà battute (#{ids[0] + 1}-#{ids[-1] + 1}).", flush=True)
+    fatte = _blocco_diviso(sessione, prefisso, testi, durate, tradotti, ids[:meta],
+                           avanza and (lambda f: avanza(f / 2)))
+    parziali = [t if t is not None else fatte.get(i) for i, t in enumerate(tradotti)]
+    return {**fatte, **_blocco_diviso(sessione, prefisso, testi, durate, parziali, ids[meta:],
+                                      avanza and (lambda f: avanza(.5 + f / 2)))}
 
 
 def _blocco(sessione, prefisso, testi, durate, tradotti, ids, avanza=None) -> dict:
@@ -257,7 +317,8 @@ def _blocco(sessione, prefisso, testi, durate, tradotti, ids, avanza=None) -> di
                      + "\n</traduzione_precedente>")
     parti.append(f"Traduci in italiano le battute da #{ids[0] + 1} a #{ids[-1] + 1} del copione, una per una, "
                  "seguendo la scheda del film e continuando in modo coerente la traduzione precedente. "
-                 "Restituisci ogni battuta con il suo numero.\n\n<da_tradurre>\n"
+                 "Restituisci ogni battuta con il suo numero: la traduzione della battuta #N deve dire quello che "
+                 "dice l'originale #N, senza anticipare la battuta dopo né saltarne una.\n\n<da_tradurre>\n"
                  + "\n\n".join(_battuta(i, testi[i], durate[i]) for i in ids) + "\n</da_tradurre>")
     attesi = sum(int(len(testi[i]) * RISPOSTA_PER_CARATTERE) + CORNICE_JSON for i in ids)
     risposta = sessione.chiedi(prefisso + [{"type": "text", "text": "\n\n".join(parti)}], SCHEMA_BATTUTE,

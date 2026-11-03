@@ -17,6 +17,7 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
+import allineamento
 import ricerca
 
 CHIAVI = {"opensubtitles": "chiave-os-segreta", "subdl": "chiave-subdl-segreta",
@@ -35,6 +36,26 @@ def srt(battute: list, passo: float = 3.0) -> str:
 
 INGLESE = [f"This is line number {n} of the test film." for n in range(40)]
 ITALIANO = [f"Questa è la battuta numero {n} del film di prova." for n in range(40)]
+
+
+def film_di_prova(battute: int = 600, seme: int = 7) -> list:
+    """Le battute (inizio, fine, numero) di un film di prova lungo, con pause irregolari come nei dialoghi veri."""
+    caso, t, voci = __import__("random").Random(seme), 30.0, []
+    for i in range(battute):
+        d = caso.uniform(1.0, 4.5)
+        voci.append((t, t + d, i))
+        t += d + caso.choice([0.1, 0.3, 0.8, 1.5, 3, 6, 12])
+    return voci
+
+
+FILM = film_di_prova()
+PAL = 23.976 / 25  # i tempi di un'edizione a 25 fotogrammi al secondo visti su una a 23,976
+
+
+def srt_film(voci: list, lingua: str = "it") -> str:
+    """Un SRT del film di prova con i tempi dati; il testo dipende solo dal numero della battuta."""
+    frase = "Questa è la battuta numero {} del film di prova." if lingua == "it" else "This is line {} of the test film."
+    return allineamento.scrivi_srt([(a, b, frase.format(n) if isinstance(n, int) else n) for a, b, n in voci])
 
 
 def risultato_os(file_id, nome, **attributi):
@@ -218,11 +239,72 @@ class ProvaRicerca(unittest.TestCase):
     def test_scarta_battute_e_tempi_diversi(self):
         api = FintaAPI(subdl_ricerca=[{"release_name": "Prova.corta", "url": "/subtitle/1.zip", "language": "IT"},
                                       {"release_name": "Prova.lenta", "url": "/subtitle/2.zip", "language": "IT"}],
-                       file={"/subtitle/1.zip": srt(ITALIANO[:20]), "/subtitle/2.zip": srt(ITALIANO, passo=4.0)})
+                       file={"/subtitle/1.zip": srt(ITALIANO[:15]), "/subtitle/2.zip": srt(ITALIANO, passo=4.0)})
         esito, _ = self.cerca(api)
         self.assertIsNone(esito.trovato)
         self.assertIn("numero di battute", esito.scarti[0]["motivo"])
-        self.assertIn("tempi", esito.scarti[1]["motivo"])
+        self.assertIn("copre", esito.scarti[1]["motivo"])
+
+    # ----------------------------------------------------------------- tempi da riallineare
+
+    def cerca_film(self, *scaricati):
+        """Cerca con il film di prova lungo come partenza; scaricati: (nome, voci) in ordine di classifica."""
+        self.partenza.write_text(srt_film(FILM, "en"), encoding="utf-8")
+        api = FintaAPI(os_ricerca=[risultato_os(i + 1, nome) for i, (nome, _) in enumerate(scaricati)],
+                       file={i + 1: srt_film(voci) for i, (_, voci) in enumerate(scaricati)})
+        with mock.patch("ricerca.durata", return_value=FILM[-1][1] + 30):
+            return self.cerca(api)
+
+    def errore_medio(self, esito):
+        """Di quanto si discostano, in media, i tempi salvati da quelli giusti del film di prova."""
+        giusti = {n: a for a, _, n in FILM}
+        salvate = allineamento.voci(Path(esito.trovato["file"]).read_text(encoding="utf-8"))
+        scarti = [abs(a - giusti[int(t.split()[5])]) for a, _, t in salvate if "battuta numero" in t]
+        return sum(scarti) / len(scarti)
+
+    def test_tempi_giusti_presi_cosi_come_sono(self):
+        esito, _ = self.cerca_film(("Film.di.Prova.giusto", FILM))
+        self.assertIn("tempi giusti", esito.trovato["motivo"])
+        self.assertLess(self.errore_medio(esito), 0.01)
+
+    def test_riallinea_frame_rate_e_cartelli(self):
+        # Edizione a 25 fps con 12 secondi di cartelli in meno in testa.
+        esito, registro = self.cerca_film(("Film.di.Prova.PAL", [((a - 12) * PAL, (b - 12) * PAL, n) for a, b, n in FILM]))
+        self.assertIsNotNone(esito.trovato, registro)
+        self.assertIn("frame rate", esito.trovato["motivo"])
+        self.assertLess(self.errore_medio(esito), 0.3)
+
+    def test_toglie_la_scena_che_qui_non_ce(self):
+        # Il file scaricato viene da un montaggio con una scena in più, che nella nostra versione manca.
+        dopo = FILM[300][1]
+        extra = [(dopo + 1 + i * 3.4, dopo + 3 + i * 3.4, f"Battuta di una scena in più, la numero {i}.") for i in range(25)]
+        voci = FILM[:301] + extra + [(a + 90, b + 90, n) for a, b, n in FILM[301:]]
+        esito, registro = self.cerca_film(("Film.di.Prova.lungo", voci))
+        self.assertIsNotNone(esito.trovato, registro)
+        self.assertIn("tagli", esito.trovato["motivo"])
+        self.assertLess(self.errore_medio(esito), 0.3)
+        tenute = Path(esito.trovato["file"]).read_text(encoding="utf-8").count("scena in più")
+        self.assertLessEqual(tenute, 2)  # al punto del taglio può restarne una
+
+    def test_scarta_se_manca_una_scena(self):
+        # Il file scaricato viene da un montaggio più corto: una scena della nostra versione resterebbe muta.
+        salto = FILM[260][0] - FILM[200][0]
+        esito, _ = self.cerca_film(("Film.di.Prova.corto", FILM[:200] + [(a - salto, b - salto, n) for a, b, n in FILM[260:]]))
+        self.assertIsNone(esito.trovato)
+        self.assertIn("non copre tutto il film", esito.scarti[0]["motivo"])
+
+    def test_scarta_un_file_che_non_corrisponde(self):
+        caso = __import__("random").Random(3)
+        voci = sorted((a, a + 2, n) for a, (_, _, n) in zip((caso.uniform(0, 3000) for _ in FILM), FILM))
+        esito, _ = self.cerca_film(("Film.di.Prova.altro", voci))
+        self.assertIsNone(esito.trovato)
+
+    def test_preferisce_i_tempi_giusti_al_riallineato(self):
+        # Il riallineato è primo in classifica, ma uno con i tempi già giusti vince.
+        esito, _ = self.cerca_film(("Film.di.Prova.PAL", [(a * PAL, b * PAL, n) for a, b, n in FILM]),
+                                   ("Film.di.Prova.giusto", FILM))
+        self.assertEqual(esito.trovato["nome"], "Film.di.Prova.giusto")
+        self.assertIn("tempi giusti", esito.trovato["motivo"])
 
     def test_scarta_la_codifica_rotta(self):
         rotto = srt([t.replace("è", "\ufffd") for t in ITALIANO]).encode("utf-8")

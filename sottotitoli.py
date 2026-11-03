@@ -7,6 +7,7 @@ Formati: SRT, WebVTT, ASS/SSA, e le tracce di sottotitoli testuali dentro i vide
 - ricostruisci(tradotti): il file completo con i testi sostituiti, tempi e struttura intatti.
 """
 
+import math
 import os
 import re
 import shutil
@@ -19,6 +20,9 @@ VIDEO = (".mkv", ".mp4", ".m4v", ".mov", ".avi", ".webm", ".ts")
 
 MAX_CARATTERI_RIGA = 42
 MAX_RIGHE = 2
+# Velocità di lettura, in caratteri al secondo (spazi inclusi, tag e a capo esclusi). L'adattatore punta a
+# 15-17; oltre questo tetto la battuta non si fa in tempo a leggere e torna al modello per essere asciugata.
+MAX_CARATTERI_SECONDO = 20
 
 
 # --------------------------------------------------------------------------
@@ -203,8 +207,12 @@ def a_capo_automatico(testo: str) -> str:
     return testo[:taglio] + "\n" + testo[taglio + 1:]
 
 
-def problemi(originale: str, tradotto: str) -> list:
-    """I vincoli che una battuta tradotta non rispetta (lista vuota se va bene)."""
+def caratteri_al_secondo(testo: str, durata: float) -> float:
+    return len(senza_tag(testo).replace("\n", "")) / durata
+
+
+def problemi(originale: str, tradotto: str, durata: float = None) -> list:
+    """I vincoli che una battuta tradotta non rispetta (lista vuota se va bene). durata in secondi."""
     errori = []
     if not tradotto.strip():
         errori.append("battuta vuota")
@@ -216,7 +224,73 @@ def problemi(originale: str, tradotto: str) -> list:
         errori.append(f"riga di {max(lunghe)} caratteri (massimo {MAX_CARATTERI_RIGA})")
     if tag(originale) != tag(tradotto):
         errori.append(f"tag diversi dall'originale: attesi {tag(originale)}, trovati {tag(tradotto)}")
+    if durata and caratteri_al_secondo(tradotto, durata) > MAX_CARATTERI_SECONDO:
+        errori.append(f"troppo veloce da leggere: {caratteri_al_secondo(tradotto, durata):.1f} caratteri al secondo "
+                      f"in {durata:.1f} s (massimo {MAX_CARATTERI_SECONDO}): asciugala")
     return errori
+
+
+# --------------------------------------------------------------------------
+# Traduzione fuori posto
+# --------------------------------------------------------------------------
+
+# Parole con la maiuscola che non sono nomi: non contano come «segni» copiati dall'originale.
+_NON_NOMI = {"The", "And", "But", "This", "That", "What", "Yes", "You", "They", "There", "When", "Where", "How",
+             "Why", "Who", "Not", "Now", "Then", "Well", "Come", "Look", "Listen", "Please", "Sir"}
+
+
+def _segni(testo: str) -> set:
+    """Numeri e nomi propri: passano dall'originale alla traduzione così come sono."""
+    return set(re.findall(r"\d+|\b[A-Z][a-z]{2,}\b", senza_tag(testo))) - _NON_NOMI
+
+
+def _somiglianza(originale: str, tradotto: str, rapporto: float) -> float:
+    """Quanto una battuta tradotta somiglia a un originale: lunghezza (rispetto al rapporto tipico del film)
+    e numeri o nomi in comune."""
+    lunga = lambda t: len(senza_tag(t).replace("\n", ""))
+    scarto = abs(math.log((lunga(tradotto) + 8) / (rapporto * lunga(originale) + 8)))
+    a, b = _segni(originale), _segni(tradotto)
+    return -scarto + 0.8 * (len(a & b) / len(a | b) if a | b else 0)
+
+
+def sfasamenti(originali: list, tradotti: list, finestra: int = 3, margine: float = 0.15) -> list:
+    """I tratti [(primo, ultimo), …] (indici compresi) in cui la traduzione sembra fuori posto: ogni battuta
+    somiglia più all'originale di una battuta vicina che al suo. Succede quando un modello salta una
+    battuta e continua con la numerazione sfasata: il testo è buono, ma compare al momento sbagliato.
+    Misurato su un film: trova i due tratti sfasati di una traduzione e niente nelle traduzioni giuste."""
+    n = len(originali)
+    if n < 2 or len(tradotti) != n:
+        return []
+    lunghi = [(len(senza_tag(o)), len(senza_tag(t or ""))) for o, t in zip(originali, tradotti)]
+    rapporti = sorted(t / o for o, t in lunghi if o >= 10 and t)
+    rapporto = rapporti[len(rapporti) // 2] if rapporti else 1.0
+    spostata = [0] * n
+    for i in range(n):
+        vicine = range(max(0, i - finestra), min(n, i + finestra + 1))
+
+        def media(s):
+            v = [_somiglianza(originali[j + s], tradotti[j] or "", rapporto) for j in vicine if 0 <= j + s < n]
+            return sum(v) / len(v) if v else -9.0
+
+        migliore, s = max((media(s), s) for s in (-2, -1, 1, 2))
+        if migliore > media(0) + margine:
+            spostata[i] = s
+    for i in range(1, n):  # la stessa traduzione su due originali diversi: una battuta è di troppo
+        if (tradotti[i] or "").strip() and (tradotti[i] or "").strip() == (tradotti[i - 1] or "").strip() \
+                and originali[i].strip() != originali[i - 1].strip():
+            spostata[i] = spostata[i] or 9
+    tratti, i = [], 0
+    while i < n:
+        if not spostata[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and (spostata[j + 1] or (j + 2 < n and spostata[j + 2])):
+            j += 1
+        if j - i >= 2 or spostata[i] == 9:
+            tratti.append((i, j))
+        i = j + 1
+    return tratti
 
 
 # --------------------------------------------------------------------------

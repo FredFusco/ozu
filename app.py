@@ -31,6 +31,7 @@ import motore_claude
 import motore_locale
 import motori
 import pulizia
+import revisione
 import sottotitoli as st
 
 CARTELLA = Path(__file__).resolve().parent
@@ -39,13 +40,17 @@ DATI = chiavi.DATI
 SESSIONI = DATI / "sessioni"
 FILE_CORRENTE = DATI / "sessione_corrente.json"
 REGISTRO = DATI / "ozu.log"
+PREFERENZE = DATI / "preferenze.json"  # scelte dell'interfaccia, per esempio «non chiedere conferma all'uscita»
 
-CAMPI = ["nome", "lingua_sub", "lingua_audio", "note", "motore", "modello", "out", "cerca_esistenti", "video"]
+CAMPI = ["nome", "lingua_sub", "lingua_audio", "note", "motore", "modello", "out", "cerca_esistenti", "video",
+         "rilettura"]
 PREDEFINITI = {"lingua_sub": "auto", "lingua_audio": "auto", "note": "", "motore": motori.PREDEFINITO,
                "modello": motore_claude.MODELLO, "out": "", "file": [], "esiti": {}, "scheda": "", "costo": 0,
                # Ricerca di sottotitoli italiani esistenti prima di tradurre (ricerca.py): attiva di serie.
                # video: il video del film per la ricerca per hash; vuoto = quello accanto ai sottotitoli.
-               "cerca_esistenti": True, "video": "", "ricerca": {}}
+               "cerca_esistenti": True, "video": "", "ricerca": {},
+               # Con il modello locale, rilettura di tutta la traduzione con un secondo modello (revisione.py).
+               "rilettura": True}
 CODICE_TROVATI = 10  # traduci.py esce così quando la ricerca trova sottotitoli italiani
 
 
@@ -230,6 +235,8 @@ def comando(p: dict, solo_scheda: bool = False, tutti: bool = False, cerca: bool
         cmd += ["--modello", p["modello"]]
     if p.get("note", "").strip():
         cmd += ["--note", p["note"]]
+    if not p.get("rilettura", True):
+        cmd.append("--senza-rilettura")
     if p.get("out"):
         cmd += ["--out", p["out"]]
     if p.get("scheda") and Path(p["scheda"]).exists() and not solo_scheda:
@@ -401,13 +408,52 @@ def impostazioni() -> dict:
         return "impostata" if servizio == "opensubtitles_password" else c if servizio == "opensubtitles_utente" \
             else f"…{c[-6:]}"
     da_ambiente = {s: bool(os.environ.get(v)) for s, v in chiavi.VARIABILI.items()}
-    return {**{s: mascherata(s) for s in chiavi.VARIABILI}, "da_ambiente": da_ambiente}
+    return {**{s: mascherata(s) for s in chiavi.VARIABILI}, "da_ambiente": da_ambiente,
+            "conferma_uscita": not leggi_preferenze().get("non_chiedere_uscita")}
 
 
 def salva_impostazioni(dati: dict) -> None:
     for servizio in chiavi.VARIABILI:
         if servizio in dati:
             chiavi.salva(servizio, dati[servizio])
+    if "conferma_uscita" in dati:
+        scrivi_preferenze(non_chiedere_uscita=not dati["conferma_uscita"])
+
+
+def leggi_preferenze() -> dict:
+    try:
+        return json.loads(PREFERENZE.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def scrivi_preferenze(**valori) -> None:
+    scrivi_atomico(PREFERENZE, json.dumps({**leggi_preferenze(), **valori}, ensure_ascii=False))
+
+
+def conferma_uscita():
+    """Prima di chiudere la finestra o uscire da Ozu: il dialogo di Ozu, con il suo logo e la casella
+    «Non mostrare più» (quello di pywebview mostrava l'icona di Python e non la permetteva).
+    pywebview la chiama sul thread principale; restituire False annulla la chiusura."""
+    if leggi_preferenze().get("non_chiedere_uscita"):
+        return True
+    import AppKit
+    AppKit.NSRunningApplication.currentApplication().activateWithOptions_(AppKit.NSApplicationActivateIgnoringOtherApps)
+    avviso = AppKit.NSAlert.alloc().init()
+    avviso.setMessageText_("Chiudere Ozu?")
+    avviso.setInformativeText_("Se c'è una traduzione in corso verrà fermata: rilanciandola riprenderà dal punto "
+                               "in cui si è interrotta.")
+    avviso.addButtonWithTitle_("Esci da Ozu")
+    avviso.addButtonWithTitle_("Annulla")
+    icona = AppKit.NSImage.alloc().initWithContentsOfFile_(str(CARTELLA / "icona_ozu.png"))
+    if icona:
+        avviso.setIcon_(icona)
+    avviso.setShowsSuppressionButton_(True)
+    avviso.suppressionButton().setTitle_("Non mostrare più")
+    esci = avviso.runModal() == AppKit.NSAlertFirstButtonReturn
+    if esci and avviso.suppressionButton().state() == AppKit.NSControlStateValueOn:
+        scrivi_preferenze(non_chiedere_uscita=True)
+    return esci
 
 
 _PREREQUISITI = {"quando": 0.0, "valore": None}
@@ -419,7 +465,8 @@ def prerequisiti(subito: bool = False) -> dict:
     if subito or time.time() - _PREREQUISITI["quando"] > 30:
         ffmpeg = any(Path(d, "ffmpeg").exists() for d in ("/opt/homebrew/bin", "/usr/local/bin"))
         _PREREQUISITI["valore"] = {"motori": motori.configurati(), "ffmpeg": ffmpeg,
-                                   "modello_locale": motore_locale.NOME, "locale_pronto": motore_locale.pronto()}
+                                   "modello_locale": motore_locale.NOME, "locale_pronto": motore_locale.pronto(),
+                                   "revisore_locale": revisione.NOME_REVISORE}
         _PREREQUISITI["quando"] = time.time()
     return _PREREQUISITI["valore"]
 
@@ -833,7 +880,8 @@ def main():
     identita_mac()
     FINESTRA = webview.create_window(
         "Ozu", f"http://127.0.0.1:{PORTA}", width=1100, height=860, min_size=(720, 560),
-        background_color="#f3eee4", confirm_close=True, text_select=True)
+        background_color="#f3eee4", text_select=True)
+    FINESTRA.events.closing += conferma_uscita
     # Chiudendo la finestra si ferma un'eventuale traduzione: si potrà riprendere.
     FINESTRA.events.closed += LAVORO.ferma
 
@@ -847,9 +895,7 @@ def main():
     webview.start(all_avvio, menu=crea_menu(), localization={
         "cocoa.menu.about": "Informazioni su", "cocoa.menu.services": "Servizi", "cocoa.menu.hide": "Nascondi",
         "cocoa.menu.hideOthers": "Nascondi altre", "cocoa.menu.showAll": "Mostra tutte", "cocoa.menu.quit": "Esci da",
-        "global.quitConfirmation": "Chiudere Ozu? Se c'è una traduzione in corso verrà fermata: "
-                                   "rilanciandola riprenderà dal punto in cui si è interrotta.",
-        "global.ok": "Chiudi", "global.cancel": "Annulla", "global.quit": "Esci da Ozu",
+        "global.ok": "Chiudi", "global.cancel": "Annulla",
     })
     LAVORO.ferma()
     server.shutdown()

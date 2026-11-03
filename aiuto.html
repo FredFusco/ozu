@@ -30,8 +30,10 @@ li { margin:4px 0; }
   <li><b>Legge tutto il film prima di tradurre</b> e compila la <i>scheda del film</i>: personaggi, chi si dà del tu e chi del lei, termini e modi di dire ricorrenti, errori del file originale.</li>
   <li><b>Traduce con tutto il copione davanti</b> e con le battute già tradotte, così nomi, registri ed espressioni restano coerenti dall'inizio alla fine.</li>
   <li><b>Pensa alla lingua parlata:</b> se il film è giapponese, cinese o portoghese, recupera in italiano le forme di cortesia e i toni che l'inglese appiattisce.</li>
-  <li><b>Rispetta i vincoli dei sottotitoli:</b> massimo due righe di 42 caratteri, velocità di lettura adeguata alla durata, stessi blocchi e stessi tempi, tag come <code>&lt;i&gt;</code> intatti. Le battute che sforano vengono riviste una seconda volta.</li>
+  <li><b>Rispetta i vincoli dei sottotitoli:</b> massimo due righe di 42 caratteri, velocità di lettura adeguata alla durata, stessi blocchi e stessi tempi, tag come <code>&lt;i&gt;</code> intatti. Le battute che sforano, o che sarebbero troppo veloci da leggere (oltre 20 caratteri al secondo), vengono riviste una seconda volta.</li>
+  <li><b>Tiene ogni battuta al suo posto:</b> se il modello salta una battuta e continua sfasato, il testo giusto finirebbe al momento sbagliato. Ozu se ne accorge confrontando ogni battuta con l'originale e ritraduce quel tratto; se non ci riesce, te lo segnala nei risultati.</li>
   <li><b>Corregge gli errori di OCR</b> del file originale («ifs» per «it's», «ls» per «Is») invece di tradurli alla lettera.</li>
+  <li><b>Fa rileggere tutto a un secondo modello</b> (solo con il modello locale): finita la traduzione, Qwen 3.8 27B rilegge ogni battuta con l'originale e la scheda davanti e corregge gli errori veri, come parole straniere scappate nell'italiano, sbagli di grammatica o di senso, un «tu» al posto del «lei». Il correttore ortografico di macOS e un elenco di parole straniere brevi («de», «est», «the»…) gli indicano le parole sospette. Nei risultati trovi l'elenco delle battute corrette, con il prima e il dopo. Costa qualche minuto in più; la casella <i>«Dopo la traduzione, fai rileggere tutto a un secondo modello»</i> la spegne.</li>
 </ul>
 
 <h2>La scheda del film</h2>
@@ -43,7 +45,7 @@ li { margin:4px 0; }
 
 <h2>Motori</h2>
 <ul>
-  <li><b>Modello locale</b> (predefinito): Gemma 4 26B di Google, gira su questo Mac con Ollama. Gratuito e privato: niente esce dal computer. Un film richiede circa 5–10 minuti. Se Ollama è spento lo avvia da sé.</li>
+  <li><b>Modello locale</b> (predefinito): Gemma 4 26B di Google, gira su questo Mac con Ollama. Gratuito e privato: niente esce dal computer. Un film richiede circa 8–10 minuti, compresa la rilettura di Qwen 3.8 27B. Se Ollama è spento lo avvia da sé.</li>
   <li><b>Claude Fable 5.1</b> e <b>Claude Opus 5.5:</b> la qualità più alta, ma a pagamento (chiave API di Anthropic con credito, in <i>Ozu › Impostazioni…</i> <kbd>⌘,</kbd>). Il costo stimato appare a fine lavoro.</li>
   <li><b>DeepL:</b> buona traduzione automatica senza Claude, con le battute precedenti come contesto. Richiede una chiave DeepL (anche gratuita).</li>
   <li><b>Google Traduttore:</b> funziona sempre, senza chiavi, ma traduce riga per riga ed è il meno affidabile.</li>
@@ -54,7 +56,7 @@ li { margin:4px 0; }
 <p>Se fermi una traduzione o chiudi Ozu, rilanciandola riparte dal punto in cui si era fermata, senza ripagare le battute già tradotte. Ritradurre file già tradotti (per esempio dopo aver corretto la scheda) chiede conferma.</p>
 
 <h2>Sottotitoli italiani già esistenti</h2>
-<p>Con la casella <i>«Prima di tradurre, cerca sottotitoli italiani già esistenti»</i> (attiva di serie) Ozu cerca su OpenSubtitles e SUBDL, prima per l'hash del video e poi per titolo e anno. Scarta quelli tradotti automaticamente o con l'IA, quelli a pagamento e quelli che, confrontati con i tuoi sottotitoli di partenza, non tornano (battute o tempi diversi, righe non tradotte, codifica rotta). Se trova un file valido lo salva accanto ai sottotitoli come <i>«nome del video - Sottotitoli IT (scaricati).srt»</i> e non traduce: lo trovi nella scheda 三, dove puoi aprirlo e, se non ti convince, premere <b>Traduci comunque</b>. Per cercare senza tradurre c'è <b>Cerca adesso</b>.</p>
+<p>Con la casella <i>«Prima di tradurre, cerca sottotitoli italiani già esistenti»</i> (attiva di serie) Ozu cerca su OpenSubtitles e SUBDL, prima per l'hash del video e poi per titolo e anno. Scarta quelli tradotti automaticamente o con l'IA, quelli a pagamento e quelli che, confrontati con i tuoi sottotitoli di partenza, non tornano (righe non tradotte, codifica rotta, numero di battute incompatibile). Se il testo è buono ma i tempi vengono da un'altra edizione del film (frame rate diverso, cartelli in testa diversi, tagli di montaggio) <b>riallinea i tempi da solo</b> e toglie le battute delle scene che nella tua versione non ci sono; preferisce comunque un file che ha già i tempi giusti. Un file che lascerebbe senza sottotitoli una scena della tua versione viene sempre scartato. Se trova un file valido lo salva accanto ai sottotitoli come <i>«nome del video - Sottotitoli IT (scaricati).srt»</i> e non traduce: lo trovi nella scheda 三, dove puoi aprirlo e, se non ti convince, premere <b>Traduci comunque</b>. Per cercare senza tradurre c'è <b>Cerca adesso</b>.</p>
 <p class="nota">Servono le chiavi gratuite di OpenSubtitles e SUBDL, in <i>Ozu › Impostazioni…</i>: senza, la fonte viene saltata. Podnapisi non ha un'API ufficiale e non viene interrogato.</p>
 
 <h2>Insieme a Vertov e Murnau</h2>
@@ -63,7 +65,7 @@ li { margin:4px 0; }
 <h2>Da Terminale</h2>
 <p>Lo stesso lavoro si può lanciare senza aprire l'app:</p>
 <pre>~/.venvs/ozu/bin/python traduci.py FILM.en.srt --audio ja</pre>
-<p>Opzioni: <code>--motore</code>, <code>--modello</code>, <code>--da</code>, <code>--audio</code>, <code>--note</code>, <code>--scheda</code>, <code>--solo-scheda</code>, <code>--out</code>. Con <code>--help</code> c'è l'elenco completo.</p>
+<p>Opzioni: <code>--motore</code>, <code>--modello</code>, <code>--da</code>, <code>--audio</code>, <code>--note</code>, <code>--scheda</code>, <code>--solo-scheda</code>, <code>--out</code>, <code>--senza-rilettura</code>. Con <code>--help</code> c'è l'elenco completo.</p>
 
 <h2>Limiti</h2>
 <ul>

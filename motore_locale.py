@@ -149,12 +149,20 @@ def _rispetta_limiti(dati, schema: dict):
     return dati
 
 
+BARRE_NON_VALIDE = re.compile(r'\\(?=[^"\\/bfnrtu])')
+
+
 def _json_nel_testo(testo: str):
-    """Il primo oggetto JSON della risposta, anche se il modello l'ha messo tra ```json e ```."""
+    """Il primo oggetto JSON della risposta, anche se il modello l'ha messo tra ```json e ```. Senza
+    scrittura vincolata i modelli a volte scrivono \\' (come in Python) o un'altra barra rovesciata non
+    valida in JSON: se la lettura fallisce, quelle barre si tolgono e si riprova."""
     inizio, fine = testo.find("{"), testo.rfind("}")
     if inizio < 0 or fine < inizio:
         raise ValueError("nessun JSON nella risposta")
-    return json.loads(testo[inizio:fine + 1])
+    try:
+        return json.loads(testo[inizio:fine + 1])
+    except ValueError:
+        return json.loads(BARRE_NON_VALIDE.sub("", testo[inizio:fine + 1]))
 
 
 def altre_app_al_lavoro() -> list:
@@ -267,8 +275,8 @@ class Sessione:
             except (ValueError, KeyError):
                 # Di solito una risposta interrotta dal tetto: si riprova con meno fantasia.
                 if tentativo == 2:
-                    raise RuntimeError("Il modello locale ha dato una risposta incompleta o non valida "
-                                       "per tre volte di seguito.")
+                    raise adattamento.RispostaNonValida("Il modello locale ha dato una risposta incompleta o "
+                                                        "non valida per tre volte di seguito.")
                 corpo["options"]["temperature"] = 0.1
             time.sleep(3)
 

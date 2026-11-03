@@ -6,8 +6,10 @@ Lo fa gratis con un modello locale (Gemma 4 26B in Ollama) o, a pagamento, con C
 
 - **Contesto:** il modello legge l'intero copione e compila la *scheda del film* (personaggi, rapporti e registro tu/lei/voi, glossario, errori del file originale), che si può correggere. Poi traduce con tutto il copione e la scheda davanti, quindi nomi, registri e modi di dire restano coerenti dall'inizio alla fine.
 - **Lingua parlata:** se i sottotitoli sono inglesi ma il film è giapponese, cinese o portoghese, recupera in italiano le forme di cortesia e i toni che l'inglese appiattisce.
-- **Vincoli dei sottotitoli:** al massimo 2 righe da 42 caratteri, velocità di lettura in base alla durata, stessi blocchi e tempi, tag come `<i>` intatti. Le battute fuori limite tornano al modello per una revisione; gli a capo seguono le regole italiane (dopo la punteggiatura, mai dopo un articolo).
+- **Vincoli dei sottotitoli:** al massimo 2 righe da 42 caratteri, velocità di lettura in base alla durata (si punta a 15–17 caratteri al secondo; oltre 20 la battuta torna al modello per essere asciugata), stessi blocchi e tempi, tag come `<i>` intatti. Le battute fuori limite tornano al modello per una revisione; gli a capo seguono le regole italiane (dopo la punteggiatura, mai dopo un articolo).
+- **Ogni battuta al suo posto:** a volte un modello salta una battuta e continua con la numerazione sfasata: il testo è buono ma compare al momento sbagliato, per decine di battute. Ozu confronta ogni battuta tradotta con l'originale e con le vicine (lunghezza, numeri, nomi) e ritraduce i tratti fuori posto; se ne resta uno, lo segnala nei risultati. La rilettura non può sfasare un tratto giusto.
 - **Errori del sorgente:** corregge gli errori di OCR evidenti («ifs» → «it's», «ls» → «Is») invece di tradurli alla lettera.
+- **Rilettura (modello locale):** finita la traduzione, un secondo modello, Qwen 3.8 27B, rilegge tutte le battute con l'originale e la scheda davanti e corregge solo gli errori veri: parole straniere scappate nell'italiano, grammatica, senso, registro. Il correttore ortografico italiano di macOS gli segnala le parole che non conosce, Ozu quelle brevi di un'altra lingua che il correttore non vede («de cui», «est circondata»), e quelle ancora sospette dopo la rilettura gli vengono riproposte con una richiesta mirata. Le battute corrette sono elencate nei risultati. Costa qualche minuto in più (un cambio di modello solo, alla fine); si può spegnere.
 
 Formati: SRT, WebVTT, ASS/SSA e i sottotitoli testuali dentro MKV, MP4 e MOV (con ffmpeg).
 
@@ -15,7 +17,7 @@ Formati: SRT, WebVTT, ASS/SSA e i sottotitoli testuali dentro MKV, MP4 e MOV (co
 
 | Motore | Quando |
 |---|---|
-| Modello locale | predefinito: gratuito e privato, su questo Mac (Ollama, Gemma 4 26B; circa 5–10 minuti per film) |
+| Modello locale | predefinito: gratuito e privato, su questo Mac (Ollama, Gemma 4 26B, riletto da Qwen 3.8 27B; circa 8–10 minuti per un film) |
 | Claude Fable 5.1 | la qualità più alta, a pagamento (chiave API di Anthropic con credito) |
 | Claude Opus 5.5 | ottima qualità, a pagamento, costa meno |
 | DeepL | traduzione automatica (chiave DeepL, anche gratuita) |
@@ -46,15 +48,24 @@ Da Terminale:
 | `--solo-scheda` | prepara la scheda e si ferma |
 | `--salva-scheda` | dove salvare la scheda |
 | `--out` | cartella dei file tradotti (predefinito: accanto agli originali) |
+| `--senza-rilettura` | con il modello locale, salta la rilettura con Qwen 3.8 27B |
 | `--chiave`, `--chiave-deepl` | salvano le chiavi API |
 
-Se l'elaborazione si interrompe, rilanciando lo stesso comando riparte da dove si era fermata (le battute già tradotte sono in `~/Library/Application Support/Ozu/parziali/`).
+Se l'elaborazione si interrompe, rilanciando lo stesso comando riparte da dove si era fermata (le battute già tradotte sono in `~/Library/Application Support/Ozu/parziali/`). Se un modello locale risponde con un JSON rotto o troncato per tre volte, Ozu ripara le barre rovesciate non valide e riprova con il blocco diviso a metà, invece di fermarsi.
+
+### Perché la rilettura con Qwen 3.8 27B
+
+Misurata il 3 novembre 2026 su un film di 938 battute tradotto da Gemma 4 26B e corretto a mano (22 correzioni): Qwen 3.8 27B ha proposto 28 correzioni, 25 giuste, 2 indifferenti e 1 peggiore; ne ha trovate 11 delle 22 e altre 14 sfuggite alla correzione a mano. Qwen 3.5 35B era più veloce ma un terzo delle sue modifiche peggiorava la battuta; Gemma che rilegge sé stessa correggeva poco e rompeva qualcosa. Una correzione si applica solo se rispetta i vincoli dei sottotitoli almeno quanto la battuta che sostituisce. Ozu usa la versione DFlash dello stesso modello, `qwen3.8:27b-dflash2-nvfp4`: sullo stesso film ha riletto in 249 secondi invece di 536, con correzioni di qualità pari. Si scarica con `ollama pull qwen3.8:27b-dflash2-nvfp4`: se manca, la rilettura viene saltata con un avviso.
 
 ## Ricerca di sottotitoli italiani esistenti
 
 Prima di tradurre, Ozu cerca se esistono già sottotitoli italiani fatti da persone (casella nella sessione, attiva di serie). Fonti: OpenSubtitles (API REST ufficiale) e SUBDL (API ufficiale); Podnapisi non ha un'API ufficiale documentata e viene saltato. Si cerca per hash del video (il video indicato nella sessione o quello accanto ai sottotitoli), poi per titolo e anno ricavati dal nome del file.
 
-Si scartano i sottotitoli segnalati come tradotti automaticamente o con l'IA, quelli che lo dicono nel nome o nel commento, quelli a pagamento, e, dopo il download, quelli che confrontati con i sottotitoli di partenza hanno battute o tempi troppo diversi, righe vuote o non tradotte, codifica rotta o righe di lunghezza anomala (soglie in `ricerca.SOGLIE`, modificabili in `~/Library/Application Support/Ozu/ricerca.json`). Il migliore viene salvato in UTF-8 accanto al file come `<nome del video> - Sottotitoli IT (scaricati).srt`, senza mai sostituire un file esistente, e la traduzione non parte: nell'app c'è «Traduci comunque».
+Si scartano i sottotitoli segnalati come tradotti automaticamente o con l'IA, quelli che lo dicono nel nome o nel commento, quelli a pagamento, e, dopo il download, quelli con un numero di battute incompatibile, righe vuote o non tradotte, codifica rotta o righe di lunghezza anomala (soglie in `ricerca.SOGLIE`, modificabili in `~/Library/Application Support/Ozu/ricerca.json`).
+
+I tempi si confrontano con i sottotitoli di partenza, che sono a tempo con il video. Un file che copre già tutti i dialoghi vince subito. Uno con il testo buono ma i tempi di un'altra edizione viene riallineato da `allineamento.py`: riconosce il frame rate (25, 24, 23,976), lo spostamento dei cartelli in testa, la deriva lenta e i tagli di montaggio, toglie le battute delle scene che nella nostra versione non ci sono e resta di riserva, usato solo se nessun candidato aveva già i tempi giusti. In ogni caso i sottotitoli devono coprire tutti i dialoghi della versione da sottotitolare (finestre di 2 minuti, scritte in sovrimpressione e titoli di coda esclusi): se manca una scena il file è scartato. Limite noto: al punto esatto di un taglio può restare o mancare una battuta.
+
+Il migliore viene salvato in UTF-8 accanto al file come `<nome del video> - Sottotitoli IT (scaricati).srt`, senza mai sostituire un file esistente, e la traduzione non parte: nell'app c'è «Traduci comunque».
 
 Chiavi (Ozu › Impostazioni, o variabili d'ambiente): `OPENSUBTITLES_API_KEY` (opensubtitles.com › Profilo › API consumers), `OPENSUBTITLES_USERNAME` e `OPENSUBTITLES_PASSWORD` (facoltativi, per più download al giorno), `SUBDL_API_KEY` (subdl.com › pannello › API). Senza chiave la fonte viene saltata con un avviso.
 

@@ -11,10 +11,17 @@ Cosa si scarta, e perché (ogni scarto finisce nell'esito e nel registro):
 - i sottotitoli che la fonte segnala come tradotti automaticamente o con l'IA;
 - quelli che nel nome, nel commento o nell'autore parlano di traduzione automatica;
 - quelli a pagamento o da sbloccare;
-- dopo il download, quelli che confrontati con i sottotitoli di partenza hanno un numero di
-  battute o una durata troppo diversi, troppe righe vuote, righe non tradotte, caratteri di
-  codifica sbagliati o una lunghezza media delle righe anomala. Le soglie sono in SOGLIE e si
-  possono cambiare in ~/Library/Application Support/Ozu/ricerca.json.
+- dopo il download, quelli con troppe righe vuote, righe non tradotte, caratteri di codifica
+  sbagliati o una lunghezza media delle righe anomala. Le soglie sono in SOGLIE e si possono
+  cambiare in ~/Library/Application Support/Ozu/ricerca.json.
+
+I tempi si confrontano con i sottotitoli di partenza, che sono a tempo con il video da
+sottotitolare. Un file che copre tutti i dialoghi così com'è vince subito. Uno con il testo
+buono ma i tempi di un'altra edizione (frame rate diverso, cartelli in testa diversi, tagli
+di montaggio) viene riallineato (allineamento.py) e tenuto di riserva: si usa solo se nessun
+candidato ha già i tempi giusti, scegliendo quello che copre di più. In ogni caso i
+sottotitoli devono coprire tutti i dialoghi della versione da sottotitolare: se manca una
+scena il file viene scartato.
 
 I candidati rimasti si ordinano: corrispondenza dell'hash del video, poi download e voti, poi
 frame rate simile a quello del video. Si scarica il migliore (al massimo SOGLIE["scaricamenti_max"]
@@ -37,6 +44,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+import allineamento
 import chiavi
 import sottotitoli as st
 
@@ -48,9 +56,8 @@ SUBDL_DOWNLOAD = "https://dl.subdl.com"
 CONFIGURAZIONE = chiavi.DATI / "ricerca.json"
 
 SOGLIE = {
-    "battute_min": 0.75,          # battute del file scaricato / battute di partenza
-    "battute_max": 1.35,
-    "durata_scarto_max": 0.10,    # differenza relativa tra le durate (ultima battuta)
+    "battute_min": 0.5,           # battute del file scaricato / battute di partenza (larghi: chi
+    "battute_max": 2.0,           # sottotitola divide le frasi in modo diverso; i tempi si controllano a parte)
     "righe_vuote_max": 0.05,      # quota di battute vuote
     "non_tradotte_max": 0.10,     # quota di battute rimaste nella lingua di partenza
     "codifica_max": 0.01,         # quota di battute con caratteri di codifica sbagliati
@@ -319,7 +326,7 @@ def cerca_opensubtitles(esito: Esito, hash_video, titolo: str, anno) -> tuple:
 
 
 def _film_os(dettagli) -> dict:
-    """I titoli e l'anno del film a cui appartiene un risultato. movie_name è nella forma «1966 - Titolo»,
+    """I titoli e l'anno del film a cui appartiene un risultato. movie_name è nella forma «2001 - Titolo»,
     con il titolo nella lingua di chi ha caricato i sottotitoli: utile quando il catalogo ha solo
     quello inglese."""
     d = dettagli or {}
@@ -442,8 +449,8 @@ def _normale(testo: str) -> str:
 
 
 def motivo_dopo_il_download(testo: str, partenza: tuple, durata_video, s: dict):
-    """Il motivo per scartare il file scaricato, o None se va bene. partenza: (testi, fine dell'ultima
-    battuta) dei sottotitoli di partenza, o None se non ci sono."""
+    """Il motivo per scartare il file scaricato, o None se va bene. partenza: (testi, voci con i
+    tempi) dei sottotitoli di partenza, o None se non ci sono. I tempi li controlla cerca."""
     testi, _, _ = st.parse("scaricati.srt", testo)
     fine = _ultima_fine(testo)
     if not testi:
@@ -460,12 +467,12 @@ def motivo_dopo_il_download(testo: str, partenza: tuple, durata_video, s: dict):
         return f"lunghezza media delle righe anomala ({media:.0f} caratteri)"
     inglesi = sum(1 for t in testi if _quota_inglese(t) > 0.3) / len(testi)
     if partenza:
-        testi_p, fine_p = partenza
+        testi_p = partenza[0]
+        # I tempi li controlla il confronto con la partenza (vedi cerca); qui solo un numero di battute
+        # così diverso che non può essere lo stesso film, nemmeno con tagli o battute divise diversamente.
         rapporto = len(testi) / max(1, len(testi_p))
         if not s["battute_min"] <= rapporto <= s["battute_max"]:
             return f"numero di battute troppo diverso ({len(testi)} contro {len(testi_p)})"
-        if fine and fine_p and abs(fine - fine_p) / fine_p > s["durata_scarto_max"]:
-            return f"tempi troppo diversi (finisce a {fine / 60:.0f} min invece di {fine_p / 60:.0f})"
         uguali = {_normale(t) for t in testi_p if len(_normale(t)) > 3}
         identiche = sum(1 for t in testi if _normale(t) in uguali) / len(testi)
         inglesi = max(inglesi, identiche)
@@ -510,6 +517,22 @@ def nome_libero(cartella: Path, base: str) -> Path:
 # La ricerca
 # --------------------------------------------------------------------------
 
+def _salva(esito: Esito, c: dict, testo: str, percorso: Path, video, tempi: str) -> None:
+    """Salva il candidato scelto in UTF-8 accanto al file, senza sostituire nulla, e lo segna come trovato."""
+    base = video.stem if video else base_del_nome(percorso)
+    destinazione = nome_libero(percorso.parent, base)
+    destinazione.write_text(testo, encoding="utf-8")
+    perche = ["corrisponde all'hash del video" if c["hash"] else "corrisponde a titolo e anno"]
+    if c["download"]:
+        perche.append(f"{c['download']} download")
+    if c["voto"]:
+        perche.append(f"voto {c['voto']:g}")
+    if tempi:
+        perche.append(tempi)
+    esito.trovato = {"fonte": c["fonte"], "nome": c["nome"], "file": str(destinazione), "motivo": ", ".join(perche)}
+    print(f"[ricerca] salvato: {destinazione}", flush=True)
+
+
 def cerca(percorso: Path, video: Path = None, partenza: Path = None) -> Esito:
     """Cerca sottotitoli italiani per il file di partenza (sottotitoli o video). video: il video, se
     noto; altrimenti si cerca accanto. partenza: i sottotitoli da confrontare (di solito il file stesso)."""
@@ -522,7 +545,7 @@ def cerca(percorso: Path, video: Path = None, partenza: Path = None) -> Esito:
     if partenza and partenza.exists():
         try:
             testo_p = st.decodifica(partenza.read_bytes())
-            dati_partenza = (st.parse(partenza.name, testo_p)[0], _ultima_fine(testo_p))
+            dati_partenza = (st.parse(partenza.name, testo_p)[0], allineamento.voci(testo_p))
         except (OSError, ValueError):
             dati_partenza = None
     titolo, anno = titolo_e_anno(video or percorso)
@@ -552,7 +575,7 @@ def cerca(percorso: Path, video: Path = None, partenza: Path = None) -> Esito:
         else:
             validi.append(c)
 
-    tentativi, esaurite = 0, set()
+    tentativi, esaurite, riserve = 0, set(), []
     for c in ordina(validi, fps_video):
         if tentativi >= s["scaricamenti_max"]:
             break
@@ -572,17 +595,23 @@ def cerca(percorso: Path, video: Path = None, partenza: Path = None) -> Esito:
         if motivo:
             esito.scarta(c, motivo)
             continue
-        base = video.stem if video else base_del_nome(percorso)
-        destinazione = nome_libero(percorso.parent, base)
-        destinazione.write_text(testo, encoding="utf-8")
-        perche = ["corrisponde all'hash del video" if c["hash"] else "corrisponde a titolo e anno"]
-        if c["download"]:
-            perche.append(f"{c['download']} download")
-        if c["voto"]:
-            perche.append(f"voto {c['voto']:g}")
-        if dati_partenza:
-            perche.append("battute e tempi coerenti con i sottotitoli di partenza")
-        esito.trovato = {"fonte": c["fonte"], "nome": c["nome"], "file": str(destinazione), "motivo": ", ".join(perche)}
-        print(f"[ricerca] salvato: {destinazione}", flush=True)
-        break
+        if not dati_partenza or not dati_partenza[1]:
+            _salva(esito, c, testo, percorso, video, "")
+            break
+        # Tempi: prima così come sono, poi riallineati.
+        partenza_voci, voci = dati_partenza[1], allineamento.voci(testo)
+        quota, scoperte = allineamento.copertura(partenza_voci, voci)
+        if not scoperte and quota >= allineamento.SOGLIE["copertura_min"]:
+            _salva(esito, c, testo, percorso, video, f"tempi giusti, copre il {quota:.0%} dei dialoghi")
+            break
+        riallineate, descrizione = allineamento.allinea(partenza_voci, voci)
+        if riallineate is None:
+            esito.scarta(c, descrizione)
+            continue
+        quota, _ = allineamento.copertura(partenza_voci, riallineate)
+        print(f"[ricerca] {c['fonte']} «{c['nome']}»: {descrizione}; lo tengo di riserva", flush=True)
+        riserve.append((quota, c, allineamento.scrivi_srt(riallineate), descrizione))
+    if not esito.trovato and riserve:
+        quota, c, testo, descrizione = max(riserve, key=lambda r: r[0])
+        _salva(esito, c, testo, percorso, video, descrizione)
     return esito

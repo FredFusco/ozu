@@ -15,6 +15,7 @@
 !Ozu.app/**
 # Mai, nemmeno se dentro ci fossero file ammessi:
 prova/
+file di lavoro/
 dist/
 __pycache__/
 .DS_Store
