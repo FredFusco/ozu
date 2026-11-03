@@ -45,10 +45,12 @@ header::after { /* il bordo di un tatami */
 }
 .testata { max-width: 1040px; margin: 0 auto; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .testata > img { width: 54px; height: 54px; flex: none; }
-.titolo { font-family: var(--serif); font-size: 32px; font-weight: 600; letter-spacing: .32em; margin: 0; line-height: 1; }
-.titolo .sigillo { display: inline-block; font-size: 13px; letter-spacing: 0; writing-mode: vertical-rl; background: var(--rosso);
-  color: #fff; padding: 3px 2px; border-radius: 3px; vertical-align: 6px; margin-left: 2px; line-height: 1.05; }
-.sottotitolo { color: var(--tenue); margin: 6px 0 0; font-size: 13.5px; font-family: var(--serif); font-style: italic; }
+/* Syne (licenza OFL, in caratteri/): il titolo, con un'evidenziatura bassa nel rosso del logo, in entrambi i temi. */
+@font-face { font-family: "Syne"; src: url("/caratteri/Syne.ttf") format("truetype"); font-weight: 400 800; font-display: block; }
+.titolo { font-family: "Syne", var(--serif); font-size: 36px; font-weight: 800; letter-spacing: .14em; margin: 0; line-height: 1; }
+.titolo .evidenziato { box-shadow: inset 0 -.36em 0 #b8301c; }
+.titolo .ultima { letter-spacing: 0; }
+.sottotitolo { color: var(--tenue); margin: 9px 0 0; font-size: 13.5px; font-family: var(--serif); font-style: italic; }
 
 /* sessione */
 .sessione { margin-left: auto; display: flex; gap: 6px; align-items: center; position: relative; flex-wrap: wrap; }
@@ -174,7 +176,7 @@ dialog .voce .d { display: block; font-size: 12.5px; color: var(--tenue); }
   <div class="testata">
     <img src="/icona.png" alt="">
     <div>
-      <h1 class="titolo">OZU <span class="sigillo" aria-hidden="true">小津</span></h1>
+      <h1 class="titolo"><span class="evidenziato">OZ<span class="ultima">U</span></span></h1>
       <p class="sottotitolo">Sottotitoli in italiano da qualsiasi lingua, adattati come farebbe un traduttore che ha visto tutto il film.</p>
     </div>
     <div class="sessione">
