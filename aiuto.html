@@ -53,6 +53,10 @@ li { margin:4px 0; }
 <h2>Interruzioni</h2>
 <p>Se fermi una traduzione o chiudi Ozu, rilanciandola riparte dal punto in cui si era fermata, senza ripagare le battute già tradotte. Ritradurre file già tradotti (per esempio dopo aver corretto la scheda) chiede conferma.</p>
 
+<h2>Sottotitoli italiani già esistenti</h2>
+<p>Con la casella <i>«Prima di tradurre, cerca sottotitoli italiani già esistenti»</i> (attiva di serie) Ozu cerca su OpenSubtitles e SUBDL, prima per l'hash del video e poi per titolo e anno. Scarta quelli tradotti automaticamente o con l'IA, quelli a pagamento e quelli che, confrontati con i tuoi sottotitoli di partenza, non tornano (battute o tempi diversi, righe non tradotte, codifica rotta). Se trova un file valido lo salva accanto ai sottotitoli come <i>«nome del video - Sottotitoli IT (scaricati).srt»</i> e non traduce: lo trovi nella scheda 三, dove puoi aprirlo e, se non ti convince, premere <b>Traduci comunque</b>. Per cercare senza tradurre c'è <b>Cerca adesso</b>.</p>
+<p class="nota">Servono le chiavi gratuite di OpenSubtitles e SUBDL, in <i>Ozu › Impostazioni…</i>: senza, la fonte viene saltata. Podnapisi non ha un'API ufficiale e non viene interrogato.</p>
+
 <h2>Insieme a Vertov e Murnau</h2>
 <p>Ozu usa Ollama come Vertov e Murnau, con un modello diverso. Per non rallentarsi a vicenda, Ozu cede il passo: se Vertov o Murnau stanno lavorando (anche se lanciati da Terminale) Ozu mostra «In attesa» e riparte da solo quando hanno finito. Quando un lavoro di Ozu finisce, o quando chiudi Ozu, il modello viene tolto dalla memoria, se nessun'altra app sta lavorando. Chiudendo Ozu si ferma anche la traduzione in corso: rilanciandola riprende da dove era arrivata.</p>
 

@@ -40,9 +40,13 @@ SESSIONI = DATI / "sessioni"
 FILE_CORRENTE = DATI / "sessione_corrente.json"
 REGISTRO = DATI / "ozu.log"
 
-CAMPI = ["nome", "lingua_sub", "lingua_audio", "note", "motore", "modello", "out"]
+CAMPI = ["nome", "lingua_sub", "lingua_audio", "note", "motore", "modello", "out", "cerca_esistenti", "video"]
 PREDEFINITI = {"lingua_sub": "auto", "lingua_audio": "auto", "note": "", "motore": motori.PREDEFINITO,
-               "modello": motore_claude.MODELLO, "out": "", "file": [], "esiti": {}, "scheda": "", "costo": 0}
+               "modello": motore_claude.MODELLO, "out": "", "file": [], "esiti": {}, "scheda": "", "costo": 0,
+               # Ricerca di sottotitoli italiani esistenti prima di tradurre (ricerca.py): attiva di serie.
+               # video: il video del film per la ricerca per hash; vuoto = quello accanto ai sottotitoli.
+               "cerca_esistenti": True, "video": "", "ricerca": {}}
+CODICE_TROVATI = 10  # traduci.py esce così quando la ricerca trova sottotitoli italiani
 
 
 # --------------------------------------------------------------------------
@@ -99,6 +103,10 @@ def nuova_sessione(nome: str = "") -> dict:
     p = {**PREDEFINITI, "id": id_, "nome": nome.strip() or "Nuova sessione", "creata": time.strftime("%Y-%m-%d %H:%M")}
     _scrivi_sessione(p)
     return p
+
+
+def carica_sessione(id_: str) -> dict:
+    return {**PREDEFINITI, **json.loads(_file_sessione(id_).read_text())}
 
 
 def carica_progetto() -> dict:
@@ -214,7 +222,7 @@ def da_tradurre(p: dict) -> list:
                                          and Path(p["esiti"][f]["uscita"]).exists())]
 
 
-def comando(p: dict, solo_scheda: bool = False, tutti: bool = False) -> list:
+def comando(p: dict, solo_scheda: bool = False, tutti: bool = False, cerca: bool = True) -> list:
     file = p["file"] if solo_scheda or tutti else da_tradurre(p)
     cmd = [sys.executable, "-u", str(CARTELLA / "traduci.py"), *file, "--motore", p["motore"],
            "--da", p["lingua_sub"], "--audio", p["lingua_audio"]]
@@ -230,7 +238,18 @@ def comando(p: dict, solo_scheda: bool = False, tutti: bool = False) -> list:
         cmd += ["--salva-scheda", p["scheda"]]
     if solo_scheda:
         cmd.append("--solo-scheda")
+    elif cerca and p.get("cerca_esistenti"):
+        cmd += ["--cerca", *_video(p, file)]
     return cmd
+
+
+def _video(p: dict, file: list) -> list:
+    """--video VIDEO se la sessione ne indica uno e c'è un solo file; altrimenti lo si cerca accanto."""
+    return ["--video", p["video"]] if p.get("video") and len(file) == 1 else []
+
+
+def comando_ricerca(p: dict) -> list:
+    return [sys.executable, "-u", str(CARTELLA / "traduci.py"), "cerca", *p["file"], *_video(p, p["file"])]
 
 
 # --------------------------------------------------------------------------
@@ -293,7 +312,7 @@ class Lavoro:
             self._registra(lambda p: p.update(costo=round(p.get("costo", 0) + self.costo, 2)))
         # L'ultimo errore resta nella sessione, per mostrarlo anche dopo aver riaperto Ozu.
         errore = None
-        if self.codice not in (0, -signal.SIGTERM):
+        if self.codice not in (0, -signal.SIGTERM, CODICE_TROVATI):
             errore = {"quando": time.strftime("%Y-%m-%d %H:%M"), "fase": self.fase, "righe": list(self.log)[-12:]}
         self._registra(lambda p: p.update(ultimo_errore=errore))
         avvisa_fine(self.tipo, self.codice)
@@ -321,6 +340,9 @@ class Lavoro:
                 self.costo = dati
             elif tipo == "scheda":
                 self._registra(lambda p: p.update(scheda=dati))
+            elif tipo == "ricerca":
+                self._registra(lambda p: p["ricerca"].update({dati["file"]: {**dati, "quando": time.strftime(
+                    "%Y-%m-%d %H:%M")}}))
             elif tipo == "esito":
                 quando = time.strftime("%Y-%m-%d %H:%M")
                 self._registra(lambda p: p["esiti"].update({dati["file"]: {**dati, "quando": quando}}))
@@ -352,7 +374,11 @@ def avvisa_fine(tipo: str, codice: int) -> None:
     """Suono e notifica di macOS quando un lavoro finisce (non se l'ha fermato l'utente)."""
     if codice == -signal.SIGTERM:
         return
-    if codice == 0 and tipo == "scheda":
+    if codice == CODICE_TROVATI:
+        suono, testo = "Glass", "Trovati sottotitoli italiani già esistenti: controllali prima di tradurre."
+    elif codice == 0 and tipo == "ricerca":
+        suono, testo = "Glass", "Nessun sottotitolo italiano valido trovato."
+    elif codice == 0 and tipo == "scheda":
         suono, testo = "Glass", "Scheda del film pronta: controllala prima di tradurre."
     elif codice == 0:
         suono, testo = "Hero", "Traduzione completata."
@@ -369,13 +395,17 @@ def avvisa_fine(tipo: str, codice: int) -> None:
 def impostazioni() -> dict:
     def mascherata(servizio):
         c = chiavi.leggi(servizio)
-        return f"…{c[-6:]}" if c else ""
+        if not c:
+            return ""
+        # La password non si mostra nemmeno in parte; l'utente sì.
+        return "impostata" if servizio == "opensubtitles_password" else c if servizio == "opensubtitles_utente" \
+            else f"…{c[-6:]}"
     da_ambiente = {s: bool(os.environ.get(v)) for s, v in chiavi.VARIABILI.items()}
-    return {"anthropic": mascherata("anthropic"), "deepl": mascherata("deepl"), "da_ambiente": da_ambiente}
+    return {**{s: mascherata(s) for s in chiavi.VARIABILI}, "da_ambiente": da_ambiente}
 
 
 def salva_impostazioni(dati: dict) -> None:
-    for servizio in ("anthropic", "deepl"):
+    for servizio in chiavi.VARIABILI:
         if servizio in dati:
             chiavi.salva(servizio, dati[servizio])
 
@@ -534,9 +564,40 @@ class Gestore(BaseHTTPRequestHandler):
                     return
                 if solo_scheda:  # una scheda nuova al posto di quella vecchia
                     progetto = modifica_sessione(progetto["id"], lambda p: p.update(scheda=""))
-                LAVORO.avvia(comando(progetto, solo_scheda, bool(dati.get("tutti"))), "scheda" if solo_scheda else "traduzione",
-                             progetto["id"])
+                # «Traduci comunque»: la ricerca c'è già stata e l'utente ha scartato quello che ha trovato.
+                cerca = not dati.get("traduci_comunque")
+                if cerca and progetto.get("cerca_esistenti") and not solo_scheda:
+                    progetto = modifica_sessione(progetto["id"], lambda p: p.update(ricerca={}))
+                LAVORO.avvia(comando(progetto, solo_scheda, bool(dati.get("tutti")), cerca),
+                             "scheda" if solo_scheda else "traduzione", progetto["id"])
                 self._json({"ok": True})
+            elif url.path == "/api/cerca-sottotitoli":
+                # Solo la ricerca, per l'interfaccia o per altri strumenti. Con "attendi": true risponde a
+                # ricerca finita, con l'esito; altrimenti subito, e l'esito arriva in /api/stato.
+                if dati.get("file"):
+                    progetto = {**progetto, "file": [dati["file"]], "video": dati.get("video", "")}
+                if not progetto["file"]:
+                    raise RuntimeError("Indica un file di sottotitoli (o aggiungilo alla sessione).")
+                mancanti = [Path(f).name for f in progetto["file"] if not Path(f).exists()]
+                if mancanti:
+                    raise RuntimeError("Non trovo " + ", ".join(mancanti) + ".")
+                modifica_sessione(progetto["id"], lambda p: p.update(ricerca={}))
+                LAVORO.avvia(comando_ricerca(progetto), "ricerca", progetto["id"])
+                if not dati.get("attendi"):
+                    self._json({"ok": True})
+                    return
+                for _ in range(1800):  # al massimo 15 minuti
+                    if LAVORO.codice is not None:
+                        break
+                    time.sleep(0.5)
+                esito = carica_sessione(progetto["id"]).get("ricerca", {})
+                self._json({"ok": True, "trovati": LAVORO.codice == CODICE_TROVATI, "ricerca": esito,
+                            "codice": LAVORO.codice})
+            elif url.path == "/api/scegli-video":
+                scelta = scegli("file")
+                if scelta:
+                    progetto = modifica_sessione(progetto["id"], lambda p: p.update(video=scelta[0]))
+                self._json({"ok": True, "progetto": progetto})
             elif url.path == "/api/ferma":
                 LAVORO.ferma()
                 self._json({"ok": True})
@@ -575,7 +636,8 @@ class Gestore(BaseHTTPRequestHandler):
             elif url.path == "/api/apri":
                 # Solo file che appartengono alla sessione: originali, traduzioni, scheda.
                 ammessi = set(progetto["file"]) | {progetto.get("scheda", "")} | {
-                    e.get("uscita", "") for e in progetto["esiti"].values()}
+                    e.get("uscita", "") for e in progetto["esiti"].values()} | {
+                    (r.get("trovato") or {}).get("file", "") for r in progetto.get("ricerca", {}).values()}
                 percorso = dati.get("percorso", "")
                 if percorso not in ammessi - {""} or not Path(percorso).exists():
                     raise RuntimeError("Il file non c'è più.")

@@ -1,7 +1,7 @@
 """Un modello che gira su questo Mac (Ollama) come motore dell'adattamento: vedi adattamento.py.
 
 Gratuito e privato: niente esce dal computer. Il modello è Gemma 4 26B (Google): nel
-confronto del 2 novembre 2026 su Ilo Ilo e su un campione giapponese è stato il più
+confronto del 2 novembre 2026 su un film e su un campione giapponese è stato il più
 veloce (circa 125 token al secondo, il doppio di Qwen3-VL 30B) e quello con l'italiano
 più naturale, a parità di errori, davanti a Qwen 3.5 35B, Qwen 3.8 27B e Gemma 4 31B.
 Ollama lo fa girare con il suo motore MLX. Se Ollama è spento lo avvia; se il modello

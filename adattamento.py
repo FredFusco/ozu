@@ -115,7 +115,7 @@ SCHEMA_SCHEDA = {
 }
 
 # Ogni battuta della risposta è {"n": numero, "t": testo}: nomi corti perché il modello li riscrive
-# per ogni battuta (misurato su Ilo Ilo: circa il 6% di tempo in meno rispetto a "id" e "testo").
+# per ogni battuta (misurato su un film di prova: circa il 6% di tempo in meno rispetto a "id" e "testo").
 SCHEMA_BATTUTE = {
     "type": "object",
     "properties": {"battute": {"type": "array", "items": {

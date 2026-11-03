@@ -50,6 +50,21 @@ Da Terminale:
 
 Se l'elaborazione si interrompe, rilanciando lo stesso comando riparte da dove si era fermata (le battute già tradotte sono in `~/Library/Application Support/Ozu/parziali/`).
 
+## Ricerca di sottotitoli italiani esistenti
+
+Prima di tradurre, Ozu cerca se esistono già sottotitoli italiani fatti da persone (casella nella sessione, attiva di serie). Fonti: OpenSubtitles (API REST ufficiale) e SUBDL (API ufficiale); Podnapisi non ha un'API ufficiale documentata e viene saltato. Si cerca per hash del video (il video indicato nella sessione o quello accanto ai sottotitoli), poi per titolo e anno ricavati dal nome del file.
+
+Si scartano i sottotitoli segnalati come tradotti automaticamente o con l'IA, quelli che lo dicono nel nome o nel commento, quelli a pagamento, e, dopo il download, quelli che confrontati con i sottotitoli di partenza hanno battute o tempi troppo diversi, righe vuote o non tradotte, codifica rotta o righe di lunghezza anomala (soglie in `ricerca.SOGLIE`, modificabili in `~/Library/Application Support/Ozu/ricerca.json`). Il migliore viene salvato in UTF-8 accanto al file come `<nome del video> - Sottotitoli IT (scaricati).srt`, senza mai sostituire un file esistente, e la traduzione non parte: nell'app c'è «Traduci comunque».
+
+Chiavi (Ozu › Impostazioni, o variabili d'ambiente): `OPENSUBTITLES_API_KEY` (opensubtitles.com › Profilo › API consumers), `OPENSUBTITLES_USERNAME` e `OPENSUBTITLES_PASSWORD` (facoltativi, per più download al giorno), `SUBDL_API_KEY` (subdl.com › pannello › API). Senza chiave la fonte viene saltata con un avviso.
+
+```bash
+~/.venvs/ozu/bin/python traduci.py cerca FILM.en.srt [--video FILM.mkv]
+~/.venvs/ozu/bin/python traduci.py FILM.en.srt --cerca
+curl -s -X POST -d '{"attendi": true}' http://127.0.0.1:8767/api/cerca-sottotitoli
+~/.venvs/ozu/bin/python -m unittest test_ricerca -v
+```
+
 ## Insieme a Vertov e Murnau
 
 Usano Ollama con un altro modello (Qwen3-VL 30B), quindi se lavorassero insieme Ollama passerebbe di continuo da un modello all'altro. Ozu cede il passo: prima di ogni richiesta al modello controlla se Vertov o Murnau stanno lavorando (dalla loro finestra, porte 8765 e 8766, o dal processo `descrivi.py` / `murnau.py`) e aspetta. Le sue richieste tengono il modello in memoria 5 minuti invece di 30. A fine lavoro, se fermato o se Ozu viene chiuso, toglie dalla memoria la copia del modello caricata da lui, se nessun altro la sta usando. Se l'app si chiude in modo anomalo, `traduci.py` se ne accorge e si ferma da solo.

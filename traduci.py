@@ -9,6 +9,12 @@ qualità più alta). DeepL e Google Traduttore restano come ripiego.
     ~/.venvs/ozu/bin/python traduci.py FILM.en.srt --audio ja
     ~/.venvs/ozu/bin/python traduci.py EP01.srt EP02.srt EP03.srt --solo-scheda
     ~/.venvs/ozu/bin/python traduci.py EP*.srt --scheda SERIE.scheda.json
+    ~/.venvs/ozu/bin/python traduci.py cerca FILM.en.srt [--video FILM.mkv]
+    ~/.venvs/ozu/bin/python traduci.py FILM.en.srt --cerca
+
+«cerca» cerca sottotitoli italiani già esistenti (vedi ricerca.py); con --cerca la ricerca
+viene prima della traduzione, e se trova sottotitoli validi la traduzione non parte
+(uscita con codice 10).
 
 Il file tradotto (FILM.it.srt) e la scheda (FILM.scheda.json) vengono salvati accanto
 all'originale, o nella cartella indicata con --out. Se l'elaborazione si interrompe,
@@ -29,10 +35,12 @@ import adattamento
 import chiavi
 import motori
 import progresso
+import ricerca
 import sottotitoli as st
 
 PARZIALI = chiavi.DATI / "parziali"
 SESSIONI_DA_LIBERARE = []  # le sessioni dei motori, da chiudere all'uscita (vedi in fondo)
+CODICE_TROVATI = 10  # uscita quando la ricerca trova sottotitoli italiani: la traduzione non parte
 
 
 def segnale(tipo: str, dati) -> None:
@@ -66,9 +74,41 @@ def argomenti():
     p.add_argument("--salva-scheda", type=Path, help="dove salvare la scheda (predefinito: accanto al primo file)")
     p.add_argument("--solo-scheda", action="store_true", help="prepara la scheda e si ferma, senza tradurre")
     p.add_argument("--out", type=Path, help="cartella dei file tradotti (predefinito: accanto agli originali)")
+    p.add_argument("--cerca", action="store_true",
+                   help="prima di tradurre cerca sottotitoli italiani esistenti; se li trova si ferma")
+    p.add_argument("--video", type=Path, help="il video del film, per la ricerca per hash (predefinito: "
+                                              "quello accanto ai sottotitoli)")
     p.add_argument("--chiave", metavar="sk-ant-…", help="salva la chiave API di Anthropic ed esce")
     p.add_argument("--chiave-deepl", metavar="CHIAVE", help="salva la chiave API di DeepL ed esce")
     return p.parse_args()
+
+
+# --------------------------------------------------------------------------
+# 0. Ricerca di sottotitoli italiani esistenti (ricerca.py)
+# --------------------------------------------------------------------------
+
+def cerca_esistenti(percorsi: list, video: Path = None) -> bool:
+    """Cerca per ogni file; True se per almeno uno ha trovato e salvato sottotitoli italiani validi."""
+    progresso.fase("Ricerca di sottotitoli italiani esistenti")
+    trovati = False
+    for i, percorso in enumerate(percorsi, 1):
+        esito = ricerca.cerca(percorso, video if len(percorsi) == 1 else None)
+        segnale("ricerca", {"file": str(percorso), **esito.come_dati()})
+        print(esito.messaggio(), flush=True)
+        trovati = trovati or bool(esito.trovato)
+        progresso.avanzamento("ricerca", i, len(percorsi))
+    return trovati
+
+
+def comando_cerca(argv: list) -> int:
+    """traduci.py cerca FILE… [--video VIDEO]: solo la ricerca, senza tradurre."""
+    p = argparse.ArgumentParser(prog="traduci.py cerca",
+                                description="Cerca sottotitoli italiani esistenti (OpenSubtitles, SUBDL) e li "
+                                            "salva accanto al file come «<nome> - Sottotitoli IT (scaricati).srt».")
+    p.add_argument("file", nargs="+", type=Path, help="i sottotitoli di partenza (o il video)")
+    p.add_argument("--video", type=Path, help="il video, per la ricerca per hash (solo con un file)")
+    a = p.parse_args(argv)
+    return CODICE_TROVATI if cerca_esistenti(a.file, a.video) else 0
 
 
 # --------------------------------------------------------------------------
@@ -158,6 +198,9 @@ def main() -> int:
         sys.exit("Indica almeno un file di sottotitoli. Aiuto: traduci.py --help")
     opzioni = {"lingua_sub": a.lingua_sub, "lingua_audio": a.lingua_audio,
                "note": a.note_file.read_text(encoding="utf-8") if a.note_file else a.note}
+
+    if a.cerca and cerca_esistenti(a.file, a.video):
+        return CODICE_TROVATI
 
     motore = motori.disponibile(a.motore)
     if motore != a.motore:
@@ -250,7 +293,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     sorveglia_genitore()
     try:
-        sys.exit(main())
+        sys.exit(comando_cerca(sys.argv[2:]) if sys.argv[1:2] == ["cerca"] else main())
     except RuntimeError as e:
         print(f"Errore: {e}", flush=True)
         sys.exit(1)

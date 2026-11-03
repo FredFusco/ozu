@@ -1,8 +1,10 @@
-"""Le chiavi API dei motori a pagamento o esterni, e la cartella dei dati di Ozu.
+"""Le chiavi API dei servizi esterni, e la cartella dei dati di Ozu.
 
 Le chiavi si salvano in ~/Library/Application Support/Ozu/chiavi.json, leggibile solo
-dal tuo utente. Le variabili d'ambiente ANTHROPIC_API_KEY e DEEPL_API_KEY, se presenti,
-hanno la precedenza.
+dal tuo utente. Le variabili d'ambiente in VARIABILI, se presenti, hanno la precedenza.
+Servizi: Anthropic e DeepL (motori di traduzione); OpenSubtitles (chiave API, e utente e
+password per il login) e SUBDL (ricerca di sottotitoli esistenti, vedi ricerca.py).
+Le chiavi non finiscono mai nel registro né nei messaggi.
 """
 
 import json
@@ -11,7 +13,9 @@ from pathlib import Path
 
 DATI = Path.home() / "Library" / "Application Support" / "Ozu"
 CHIAVI = DATI / "chiavi.json"
-VARIABILI = {"anthropic": "ANTHROPIC_API_KEY", "deepl": "DEEPL_API_KEY"}
+VARIABILI = {"anthropic": "ANTHROPIC_API_KEY", "deepl": "DEEPL_API_KEY",
+             "opensubtitles": "OPENSUBTITLES_API_KEY", "opensubtitles_utente": "OPENSUBTITLES_USERNAME",
+             "opensubtitles_password": "OPENSUBTITLES_PASSWORD", "subdl": "SUBDL_API_KEY"}
 
 
 def _salvate() -> dict:

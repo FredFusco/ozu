@@ -145,6 +145,8 @@ table.scheda td.togli button:hover { color: var(--rosso); }
 .fase .cifre { font-variant-numeric: tabular-nums; color: var(--tenue); font-size: 13px; text-align: right; }
 .fase.principale .nome, .fase.principale .cifre { color: var(--inchiostro); font-weight: 600; }
 .fase.principale .barra { height: 12px; border-radius: 6px; }
+.spunta-ricerca { display: flex; gap: 8px; align-items: center; font-size: 14px; margin-top: 14px; }
+.ricerca-trovata { border-left: 3px solid var(--ok); padding-left: 12px; }
 .schede .percento { font-size: 13px; color: var(--rosso); font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) { .fase { grid-template-columns: 1fr; gap: 4px; } .fase .cifre { text-align: left; } }
 .risultati { margin-top: 8px; border-top: 1px solid var(--linea); }
@@ -231,6 +233,11 @@ dialog .voce .d { display: block; font-size: 12.5px; color: var(--tenue); }
           <textarea id="note" placeholder="Es.: Hiroshi e la madre si danno del lei. «Sensei» si rende con «maestro». Il film è ambientato negli anni Cinquanta."></textarea>
         </label>
       </div>
+      <label class="spunta-ricerca"><input type="checkbox" id="cerca_esistenti"> Prima di tradurre, cerca sottotitoli italiani già esistenti (OpenSubtitles, SUBDL)</label>
+      <div class="uscita" id="riga-video">Video per la ricerca: <strong id="dove-video">quello accanto ai sottotitoli</strong>
+        <button class="bottone piccolo" id="scegli-video">Scegli…</button>
+        <button class="bottone piccolo" id="video-accanto" hidden>Quello accanto</button>
+        <button class="bottone piccolo" id="cerca-ora">Cerca adesso</button></div>
       <div class="uscita">I file tradotti vanno <strong id="dove-uscita">accanto agli originali</strong>
         <button class="bottone piccolo" id="scegli-uscita">Cambia…</button>
         <button class="bottone piccolo" id="uscita-accanto" hidden>Accanto agli originali</button></div>
@@ -285,6 +292,10 @@ dialog .voce .d { display: block; font-size: 12.5px; color: var(--tenue); }
       </div>
       <details id="dettagli" style="margin-top:12px"><summary>Dettagli dell'elaborazione</summary><pre id="log"></pre></details>
     </section>
+    <section class="passo" id="pannello-ricerca" hidden>
+      <h2>Sottotitoli italiani esistenti</h2>
+      <div id="ricerca"></div>
+    </section>
     <section class="passo">
       <h2>Risultati</h2>
       <div id="risultati-vuoto" class="vuoto">Ancora nessun file tradotto in questa sessione.</div>
@@ -304,6 +315,17 @@ dialog .voce .d { display: block; font-size: 12.5px; color: var(--tenue); }
   <label class="campo" style="margin-top:10px">Chiave API di DeepL (facoltativa)
     <input type="password" id="k-deepl" placeholder="…:fx" autocomplete="off"></label>
   <div class="nota" id="k-deepl-stato"></div>
+  <h4>Ricerca di sottotitoli esistenti</h4>
+  <p class="nota">Senza chiavi la fonte viene saltata. OpenSubtitles: chiave da opensubtitles.com › Profilo › API consumers; utente e password servono per scaricare più file al giorno. SUBDL: chiave da subdl.com › pannello › API.</p>
+  <label class="campo">Chiave API di OpenSubtitles<input type="password" id="k-opensubtitles" autocomplete="off"></label>
+  <div class="nota" id="k-opensubtitles-stato"></div>
+  <div class="griglia">
+    <label class="campo">Utente OpenSubtitles<input type="text" id="k-opensubtitles_utente" autocomplete="off"></label>
+    <label class="campo">Password OpenSubtitles<input type="password" id="k-opensubtitles_password" autocomplete="off"></label>
+  </div>
+  <div class="nota" id="k-opensubtitles_utente-stato"></div>
+  <label class="campo">Chiave API di SUBDL<input type="password" id="k-subdl" autocomplete="off"></label>
+  <div class="nota" id="k-subdl-stato"></div>
   <div class="avviso" id="avviso-impostazioni"></div>
   <div class="riga-azioni"><span class="spinta"></span>
     <button class="bottone" data-chiudi>Annulla</button><button class="bottone primario" id="salva-impostazioni">Salva</button></div>
@@ -396,6 +418,9 @@ function disegna() {
     : usato === "claude" ? "Claude legge tutto il film, prepara la scheda e traduce con quel contesto, correggendo gli errori OCR. È il più accurato, ma si paga a consumo: qualche dollaro per film."
     : usato === "deepl" ? "Traduzione automatica con le battute precedenti come contesto: veloce, ma senza scheda né adattamento." : "Traduzione automatica riga per riga: da usare solo se gli altri motori non sono disponibili.");
   $("#dove-uscita").textContent = p.out ? p.out : "accanto agli originali";
+  $("#cerca_esistenti").checked = !!p.cerca_esistenti;
+  $("#dove-video").textContent = p.video ? nome(p.video) : "quello accanto ai sottotitoli";
+  $("#video-accanto").hidden = !p.video;
   $("#uscita-accanto").hidden = !p.out;
   const occupato = l.attivo;
   $("#avvia-traduci").disabled = $("#avvia-scheda").disabled = $("#rifai-scheda").disabled = occupato || !p.file.length;
@@ -497,10 +522,11 @@ function disegnaLavoro() {
     $("#log").textContent = !l.attivo && e ? e.righe.join("\n") : l.log.join("\n");
     return;
   }
-  $("#titolo-lavoro").textContent = l.tipo === "scheda" ? "Scheda del film" : "Traduzione";
+  $("#titolo-lavoro").textContent = l.tipo === "scheda" ? "Scheda del film" : l.tipo === "ricerca" ? "Ricerca di sottotitoli" : "Traduzione";
   const finito = !l.attivo;
   $("#spiega-lavoro").textContent = l.attivo ? `${l.fase || "Avvio"}…` + (l.motore ? ` · ${l.motore}` : "")
-    : l.codice === 0 ? (l.tipo === "scheda" ? "Scheda pronta: controllala nella scheda 二." : "Fatto.")
+    : l.codice === 10 ? "Trovati sottotitoli italiani già esistenti: la traduzione non è partita. Li vedi qui sotto."
+    : l.codice === 0 ? (l.tipo === "scheda" ? "Scheda pronta: controllala nella scheda 二." : l.tipo === "ricerca" ? "Ricerca finita: nessun sottotitolo italiano valido." : "Fatto.")
     : l.codice < 0 ? "Fermata. Rilanciandola riprende da dove si era interrotta." : "Si è interrotta con un errore: guarda i dettagli qui sotto.";
   const righe = [], g = l.avanzamento.lavoro;
   if (g) {
@@ -519,7 +545,24 @@ function disegnaLavoro() {
   if (giu) pre.scrollTop = pre.scrollHeight;
 }
 
+function disegnaRicerca() {
+  const p = STATO.progetto, voci = Object.values(p.ricerca || {}).filter(r => p.file.includes(r.file));
+  $("#pannello-ricerca").hidden = !voci.length;
+  const trovati = voci.filter(r => r.trovato);
+  $("#ricerca").innerHTML = voci.map(r => r.trovato
+    ? `<div class="risultato ricerca-trovata"><div class="n">${esc(nome(r.trovato.file))}</div>
+       <div class="d">per ${esc(nome(r.file))} · da ${esc(r.trovato.fonte)} («${esc(r.trovato.nome)}») · ${esc(r.trovato.motivo)}</div>
+       <div class="azioni"><button class="bottone piccolo" data-apri="${esc(r.trovato.file)}">Apri</button><button class="bottone piccolo" data-mostra="${esc(r.trovato.file)}">Mostra nel Finder</button></div></div>`
+    : `<div class="risultato"><div class="n">${esc(nome(r.file))}: nessun sottotitolo italiano valido</div>
+       <div class="d">${r.fonti.map(f => `${esc(f.fonte)}: ${esc(f.stato)}`).join(" · ")}</div>
+       ${r.scarti.length ? `<details><summary>${r.scarti.length} scartati</summary><pre>${esc(r.scarti.map(x => `${x.fonte} «${x.nome}»: ${x.motivo}`).join("\n"))}</pre></details>` : ""}</div>`).join("")
+    + (trovati.length ? `<p class="spiega" style="margin-top:12px">La traduzione non è partita: confronta i sottotitoli trovati con quelli di partenza. Se non ti convincono:</p>
+       <button class="bottone primario" id="traduci-comunque">Traduci comunque</button>` : "");
+  if ($("#traduci-comunque")) $("#traduci-comunque").onclick = () => avvia("traduzione", true);
+}
+
 function disegnaRisultati() {
+  disegnaRicerca();
   const p = STATO.progetto, esiti = Object.values(p.esiti || {}).filter(e => p.file.includes(e.file));
   $("#risultati-vuoto").hidden = esiti.length > 0;
   $("#risultati").innerHTML = esiti.map(e => e.errore
@@ -543,17 +586,23 @@ $("#note").onchange = e => salvaOpzioni({note: e.target.value});
 $("#motore").onchange = e => { const [m, mod] = e.target.value.split(":"); salvaOpzioni(mod ? {motore: m, modello: mod} : {motore: m}); };
 $("#scegli-uscita").onclick = async () => { const j = await api("/api/cartella-uscita", {}); STATO.progetto = j.progetto; disegna(); };
 $("#uscita-accanto").onclick = () => salvaOpzioni({out: ""});
+$("#cerca_esistenti").onchange = e => salvaOpzioni({cerca_esistenti: e.target.checked});
+$("#scegli-video").onclick = async () => { const j = await api("/api/scegli-video", {}); STATO.progetto = j.progetto; disegna(); };
+$("#video-accanto").onclick = () => salvaOpzioni({video: ""});
+$("#cerca-ora").onclick = async () => {
+  try { await api("/api/cerca-sottotitoli", {}); mostra("traduzione"); aggiorna(); } catch (e) { $("#avviso-avvio").textContent = e.message; }
+};
 
-async function avvia(fase) {
+async function avvia(fase, comunque = false) {
   $("#avviso-avvio").textContent = $("#avviso-scheda").textContent = "";
   try {
     await api("/api/progetto", {note: $("#note").value});
     if (schedaModificata && fase !== "scheda") await salvaScheda();
     if (fase === "scheda" && STATO.scheda && !confirm("Preparare una scheda nuova? Quella attuale, con le tue correzioni, non verrà più usata (il file resta).")) return;
-    const j = await api("/api/avvia", {fase});
+    const j = await api("/api/avvia", {fase, traduci_comunque: comunque});
     if (j.gia_tradotti) {
       if (!confirm("Tutti i file di questa sessione sono già tradotti. Tradurli di nuovo (per esempio dopo aver corretto la scheda)? Le traduzioni attuali verranno sostituite.")) return;
-      await api("/api/avvia", {fase, tutti: true});
+      await api("/api/avvia", {fase, tutti: true, traduci_comunque: comunque});
     }
     schedaModificata = false;
     mostra("traduzione");
@@ -622,7 +671,11 @@ document.querySelectorAll("[data-chiudi]").forEach(b => b.onclick = () => b.clos
 
 async function apriImpostazioni() {
   const j = await api("/api/impostazioni");
-  $("#k-anthropic").value = $("#k-deepl").value = "";
+  for (const k of ["anthropic", "deepl", "opensubtitles", "opensubtitles_utente", "opensubtitles_password", "subdl"]) $("#k-" + k).value = "";
+  const stato = (k, variabile) => j.da_ambiente[k] ? `Presa dalla variabile ${variabile}.` : j[k] ? `Salvata (${j[k]}). Scrivine una nuova per sostituirla.` : "Non impostata.";
+  $("#k-opensubtitles-stato").textContent = stato("opensubtitles", "OPENSUBTITLES_API_KEY");
+  $("#k-opensubtitles_utente-stato").textContent = "Utente: " + stato("opensubtitles_utente", "OPENSUBTITLES_USERNAME") + " Password: " + stato("opensubtitles_password", "OPENSUBTITLES_PASSWORD");
+  $("#k-subdl-stato").textContent = stato("subdl", "SUBDL_API_KEY");
   $("#k-anthropic-stato").textContent = j.da_ambiente.anthropic ? "Presa dalla variabile ANTHROPIC_API_KEY." : j.anthropic ? `Salvata (${j.anthropic}). Scrivine una nuova per sostituirla.` : "Non impostata.";
   $("#k-deepl-stato").textContent = j.da_ambiente.deepl ? "Presa dalla variabile DEEPL_API_KEY." : j.deepl ? `Salvata (${j.deepl}). Scrivine una nuova per sostituirla.` : "Non impostata.";
   $("#avviso-impostazioni").textContent = "";
@@ -631,7 +684,8 @@ async function apriImpostazioni() {
 $("#salva-impostazioni").onclick = async () => {
   const dati = {};
   if ($("#k-anthropic").value.trim()) dati.anthropic = $("#k-anthropic").value.trim();
-  if ($("#k-deepl").value.trim()) dati.deepl = $("#k-deepl").value.trim();
+  for (const k of ["deepl", "opensubtitles", "opensubtitles_utente", "opensubtitles_password", "subdl"])
+    if ($("#k-" + k).value.trim()) dati[k] = $("#k-" + k).value.trim();
   try { await api("/api/impostazioni", dati); $("#d-impostazioni").close(); aggiorna(); }
   catch (e) { $("#avviso-impostazioni").textContent = e.message; }
 };
