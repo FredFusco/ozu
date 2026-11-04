@@ -181,8 +181,10 @@ def altre_app_al_lavoro() -> list:
     except Exception:
         processi = ""
     for nome, programma in PROGRAMMI_DI_ANALISI.items():
-        # Solo Python che esegue proprio quel programma, non un comando che ne nomina il percorso.
-        in_esecuzione = any("python" in riga.lower() and re.search(re.escape(programma) + r"(\s|$)", riga)
+        # Solo Python che esegue proprio quel programma, non un comando che ne nomina il percorso. Il programma
+        # può essere lanciato con il percorso («vertov/descrivi.py») o dalla sua cartella («descrivi.py»).
+        nome_file = re.escape(programma.rsplit("/", 1)[-1])
+        in_esecuzione = any("python" in riga.lower() and re.search(r"(^|[\s/])" + nome_file + r"(\s|$)", riga)
                             for riga in processi.splitlines())
         if nome not in occupate and in_esecuzione:
             occupate.append(nome)

@@ -45,9 +45,10 @@ header::after { /* il bordo di un tatami */
 }
 .testata { max-width: 1040px; margin: 0 auto; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .testata > img { width: 54px; height: 54px; flex: none; }
-/* Syne (licenza OFL, in caratteri/): il titolo, con un'evidenziatura bassa nel rosso del logo, in entrambi i temi. */
-@font-face { font-family: "Syne"; src: url("/caratteri/Syne.ttf") format("truetype"); font-weight: 400 800; font-display: block; }
-.titolo { font-family: "Syne", var(--serif); font-size: 36px; font-weight: 800; letter-spacing: .14em; margin: 0; line-height: 1; }
+/* Mourier (Velvetyne, licenza OFL, in caratteri/): il titolo, con un'evidenziatura bassa nel rosso del logo,
+   in entrambi i temi. */
+@font-face { font-family: "Mourier"; src: url("/caratteri/Mourier.otf") format("opentype"); font-display: block; }
+.titolo { font-family: "Mourier", var(--serif); font-size: 56px; font-weight: 400; letter-spacing: .16em; margin: 0; line-height: 1; }
 .titolo .evidenziato { box-shadow: inset 0 -.36em 0 #b8301c; }
 .titolo .ultima { letter-spacing: 0; }
 .sottotitolo { color: var(--tenue); margin: 9px 0 0; font-size: 13.5px; font-family: var(--serif); font-style: italic; }

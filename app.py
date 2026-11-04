@@ -520,8 +520,8 @@ class Gestore(BaseHTTPRequestHandler):
             self._invia((CARTELLA / "aiuto.html").read_bytes(), "text/html; charset=utf-8")
         elif url.path == "/icona.png":
             self._invia((CARTELLA / "icona_ozu.png").read_bytes(), "image/png")
-        elif url.path == "/caratteri/Syne.ttf":
-            self._invia((CARTELLA / "caratteri" / "Syne.ttf").read_bytes(), "font/ttf")
+        elif url.path == "/caratteri/Mourier.otf":
+            self._invia((CARTELLA / "caratteri" / "Mourier.otf").read_bytes(), "font/otf")
         elif url.path == "/api/stato":
             mancanti = [f for f in progetto["file"] if not Path(f).exists()]
             self._json({"progetto": progetto, "lavoro": LAVORO.stato(), "mancanti": mancanti,

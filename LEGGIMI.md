@@ -82,13 +82,26 @@ Usano Ollama con un altro modello (Qwen3-VL 30B), quindi se lavorassero insieme 
 
 ## Struttura
 
-Come Vertov e Murnau: `app.py` apre la finestra (pywebview) e serve `interfaccia.html` su `127.0.0.1:8767`. Il lavoro vero lo fa `traduci.py` in un processo separato, che comunica l'avanzamento con righe `@@`. Gli altri moduli: `adattamento.py` (istruzioni, scheda, traduzione, revisione, stime), i motori `motore_locale.py` (Ollama), `motore_claude.py` (API di Anthropic), `motore_deepl.py` e `motore_google.py`, `motori.py` (elenco dei motori e ripiego), `chiavi.py` (chiavi API), `sottotitoli.py` (formati e vincoli), `aggiornamenti.py`, `pulizia.py` e `icona/genera_icona.py`.
+Come Vertov e Murnau: `app.py` apre la finestra (pywebview) e serve `interfaccia.html` su `127.0.0.1:8767`. Il lavoro vero lo fa `traduci.py` in un processo separato, che comunica l'avanzamento con righe `@@`. Gli altri moduli: `adattamento.py` (istruzioni, scheda, traduzione, revisione, stime), i motori `motore_locale.py` (Ollama), `motore_claude.py` (API di Anthropic), `motore_deepl.py` e `motore_google.py`, `motori.py` (elenco dei motori e ripiego), `chiavi.py` (chiavi API), `sottotitoli.py` (formati, vincoli, battute fuori posto), `revisione.py` (rilettura con il secondo modello), `allineamento.py` (tempi dei sottotitoli scaricati), `ricerca.py`, `banco_di_prova.py`, `aggiornamenti.py`, `pulizia.py` e `icona/genera_icona.py`.
 
 Le sessioni sono salvate in `~/Library/Application Support/Ozu/sessioni/` (ogni scrittura è atomica e protetta da un lucchetto, perché l'interfaccia e il lavoro in corso le modificano insieme) e il registro in `ozu.log` nella stessa cartella.
 
+## Banco di prova dei modelli
+
+Prima di adottare un modello nuovo o aggiornato (Gemma, Qwen, o un altro in Ollama), `banco_di_prova.py` lo fa lavorare su film già tradotti e corretti a mano e lo confronta con le prove precedenti:
+
+```bash
+~/.venvs/ozu/bin/python banco_di_prova.py aggiungi NOME FILM.en.srt FILM.corretta.it.srt --prima FILM.it.srt --scheda FILM.scheda.json --da en --audio fr
+~/.venvs/ozu/bin/python banco_di_prova.py prova                       # i modelli di adesso
+~/.venvs/ozu/bin/python banco_di_prova.py prova --modello NOME_OLLAMA  # un candidato
+~/.venvs/ozu/bin/python banco_di_prova.py storia
+```
+
+Per ogni prova misura i tempi di traduzione e di rilettura, la somiglianza al riferimento corretto a mano (chrF, 0–100), gli **errori noti** rifatti (le parole straniere o storpiate che hai tolto correggendo: «dozens», «de cui»), le battute con parole sospette, i tratti fuori posto (prima e dopo il controllo) e i punti da controllare, e dice per ognuna se va meglio, peggio o uguale rispetto alla prova precedente. La somiglianza al riferimento favorisce un po' lo stile del modello che l'ha prodotto: gli errori noti, le parole sospette e i tratti fuori posto no. Casi, storia e traduzioni di ogni prova restano in `~/Library/Application Support/Ozu/banco_di_prova/`, mai su GitHub.
+
 ## Aggiornamenti
 
-- `aggiornamenti.py` controlla Ozu (annuncio all'indirizzo in `aggiornamenti.json`), ffmpeg e Ollama (Homebrew), il modello locale e le librerie Python dell'ambiente. L'app chiede prima di installare; se le librerie non si caricano più, tornano alla versione precedente.
-- L'annuncio previsto è `https://github.com/FredFusco/ozu/releases/latest/download/ozu.json`. Il repository va ancora creato su GitHub.
+- `aggiornamenti.py` controlla Ozu (annuncio all'indirizzo in `aggiornamenti.json`), ffmpeg e Ollama (Homebrew), i due modelli locali (Gemma 4 26B che traduce, Qwen 3.8 27B che rilegge) e le librerie Python dell'ambiente. L'app chiede prima di installare; se le librerie non si caricano più, tornano alla versione precedente.
+- L'annuncio è `https://github.com/FredFusco/ozu/releases/latest/download/ozu.json`. Prima di adottare un aggiornamento dei modelli, conviene passarlo dal banco di prova.
 - Per pubblicare una versione: `git commit` e `git push`, poi `python prepara_aggiornamento.py 1.1.0 "Novità…" --pubblica`.
 - Su GitHub finiscono solo i file del programma ammessi da `.gitignore`, mai sottotitoli, video o schede dei film.

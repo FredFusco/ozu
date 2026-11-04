@@ -10,7 +10,7 @@ Si controllano:
   Ollama (fa girare il modello locale);
 - le librerie Python dell'ambiente di Ozu (pywebview, anthropic): dopo l'aggiornamento
   si verifica che si carichino, e se qualcosa non va si torna alle versioni di prima;
-- il modello locale di Ozu (registro di Ollama).
+- i modelli locali di Ozu (registro di Ollama): quello che traduce e quello che rilegge.
 I modelli di Claude non si scaricano: girano sui server di Anthropic.
 
 Annuncio (ozu.json):
@@ -34,6 +34,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import motore_locale
+import revisione
 
 CARTELLA = Path(__file__).resolve().parent
 DATI = Path.home() / "Library" / "Application Support" / "Ozu"
@@ -49,7 +50,11 @@ PROGRAMMI = {"ffmpeg": "legge i sottotitoli dentro i video",
              "ollama": "fa girare il modello locale sul Mac"}
 # Moduli che devono caricarsi dopo un aggiornamento delle librerie.
 MODULI = ["webview", "anthropic"]
-GRUPPI = {"app": "Ozu", "programma": "Programmi", "libreria": "Librerie Python", "modello": "Modello locale"}
+GRUPPI = {"app": "Ozu", "programma": "Programmi", "libreria": "Librerie Python", "modello": "Modelli locali"}
+# I modelli di Ollama che Ozu usa: nome nel registro → (nome da mostrare, a cosa serve, peso del download).
+MODELLI_LOCALI = {motore_locale.MODELLO: (motore_locale.NOME, "traduce e adatta i sottotitoli", "circa 16 GB"),
+                  revisione.REVISORE: (revisione.NOME_REVISORE, "rilegge la traduzione e corregge gli errori",
+                                       "circa 19 GB")}
 
 
 def versione() -> str:
@@ -162,27 +167,31 @@ def _impronta_remota(modello: str) -> str:
 
 
 def controlla_modello_locale() -> list:
-    """C'è una versione nuova del modello locale nel registro di Ollama?
+    """C'è una versione nuova di un modello locale (MODELLI_LOCALI) nel registro di Ollama?
 
     Per i modelli che Ollama fa girare così come sono, l'impronta locale coincide con quella del
-    registro. Quelli che fa girare con MLX (come Gemma 4) li converte dopo il download, e l'impronta
-    locale non coincide più: per loro si ricorda l'impronta del registro al momento del download
-    (o del primo controllo, se il modello c'era già) e si propone l'aggiornamento solo se cambia."""
-    modello = motore_locale.MODELLO
+    registro. Quelli che fa girare con MLX (come Gemma 4 e Qwen 3.8) li converte dopo il download, e
+    l'impronta locale non coincide più: per loro si ricorda l'impronta del registro al momento del
+    download (o del primo controllo, se il modello c'era già) e si propone l'aggiornamento solo se cambia.
+    Un modello che manca non si propone qui: lo scarica Ozu al primo uso."""
     with urllib.request.urlopen(f"{OLLAMA}/api/tags", timeout=3) as r:
         locali = {m["name"]: m.get("digest", "") for m in json.load(r).get("models", [])}
-    if modello not in locali:
-        return []
-    remota = _impronta_remota(modello)
-    scaricate = leggi_stato().get("modelli_scaricati", {})
-    if remota == locali[modello] or remota == scaricate.get(modello):
-        return []
-    if modello not in scaricate:
-        scrivi_stato(modelli_scaricati={**scaricate, modello: remota})
-        return []
-    return [{"chiave": "ollama:" + modello, "gruppo": "modello", "nome": modello,
-             "descrizione": f"{motore_locale.NOME}, traduce e adatta i sottotitoli (download di circa 16 GB)",
-             "attuale": scaricate[modello][:12], "nuova": remota[:12], "impronta": remota}]
+    voci = []
+    for modello, (nome, compito, peso) in MODELLI_LOCALI.items():
+        if modello not in locali:
+            continue
+        remota = _impronta_remota(modello)
+        scaricate = leggi_stato().get("modelli_scaricati", {})
+        if remota == locali[modello] or remota == scaricate.get(modello):
+            continue
+        if modello not in scaricate:
+            scrivi_stato(modelli_scaricati={**scaricate, modello: remota})
+            continue
+        voci.append({"chiave": "ollama:" + modello, "gruppo": "modello", "nome": modello,
+                     "descrizione": f"{nome}, {compito} (download di {peso}). Dopo l'aggiornamento conviene "
+                                    "controllarlo con il banco di prova (banco_di_prova.py)",
+                     "attuale": scaricate[modello][:12], "nuova": remota[:12], "impronta": remota})
+    return voci
 
 
 def controlla(manuale: bool = False) -> dict:
@@ -303,9 +312,9 @@ def _installa_programmi(nomi: list) -> None:
                 pass
 
 
-def _installa_modello_locale() -> None:
-    _fase(f"Aggiorno {motore_locale.NOME} (MB)")
-    corpo = json.dumps({"model": motore_locale.MODELLO, "stream": True}).encode()
+def _installa_modello_locale(modello: str) -> None:
+    _fase(f"Aggiorno {MODELLI_LOCALI.get(modello, (modello,))[0]} (MB)")
+    corpo = json.dumps({"model": modello, "stream": True}).encode()
     richiesta = urllib.request.Request(f"{OLLAMA}/api/pull", data=corpo, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(richiesta, timeout=None) as r:
         for riga in r:
@@ -315,7 +324,7 @@ def _installa_modello_locale() -> None:
             if stato.get("total") and stato.get("completed") is not None:
                 _fase(INSTALLAZIONE["fase"], stato["completed"] // 2**20, stato["total"] // 2**20)
     scaricate = leggi_stato().get("modelli_scaricati", {})
-    scrivi_stato(modelli_scaricati={**scaricate, motore_locale.MODELLO: _impronta_remota(motore_locale.MODELLO)})
+    scrivi_stato(modelli_scaricati={**scaricate, modello: _impronta_remota(modello)})
 
 
 def _installa_librerie(nomi: list) -> None:
@@ -350,8 +359,8 @@ def installa(voci: list) -> None:
     if per_gruppo["programma"]:
         passi.append((", ".join(v["nome"] for v in per_gruppo["programma"]),
                       lambda: _installa_programmi([v["nome"] for v in per_gruppo["programma"]])))
-    if per_gruppo["modello"]:
-        passi.append((motore_locale.NOME, _installa_modello_locale))
+    for v in per_gruppo["modello"]:
+        passi.append((MODELLI_LOCALI.get(v["nome"], (v["nome"],))[0], lambda v=v: _installa_modello_locale(v["nome"])))
     for v in per_gruppo["app"]:
         passi.append((f"Ozu {v['nuova']}", lambda v=v: _installa_app(v)))
 

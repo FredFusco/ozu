@@ -9,6 +9,7 @@ import contextlib
 import io
 import re
 import unittest
+from unittest import mock
 
 import adattamento
 import motore_locale
@@ -119,6 +120,18 @@ class ProvaRisposteNonValide(unittest.TestCase):
     def test_json_con_barre_non_valide(self):
         self.assertEqual(motore_locale._json_nel_testo('Ecco: {"t": "l\\\'uomo \\"x\\"\\n"}'),
                          {"t": "l'uomo \"x\"\n"})
+
+    def test_riconosce_vertov_lanciato_dalla_sua_cartella(self):
+        righe = {"con il percorso": "/usr/bin/python3 -u /Users/x/vertov/descrivi.py film.mxf",
+                 "dalla sua cartella": "/opt/homebrew/bin/Python -u descrivi.py /Users/x/RULLO 1/film.mxf --edl x.edl"}
+        for come, riga in righe.items():
+            with self.subTest(come), \
+                    mock.patch("motore_locale.urllib.request.urlopen", side_effect=OSError("chiusa")), \
+                    mock.patch("motore_locale.subprocess.run", return_value=mock.Mock(stdout=riga + "\n")):
+                self.assertEqual(motore_locale.altre_app_al_lavoro(), ["Vertov"])
+        with mock.patch("motore_locale.urllib.request.urlopen", side_effect=OSError("chiusa")), \
+                mock.patch("motore_locale.subprocess.run", return_value=mock.Mock(stdout="vim descrivi.py.bak\n")):
+            self.assertEqual(motore_locale.altre_app_al_lavoro(), [])
 
     def test_traduzione_divisa_a_meta(self):
         class FintoTraduttore:
