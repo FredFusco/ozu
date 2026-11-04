@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """Ozu: l'app che traduce in italiano i sottotitoli di un film.
 
-Apre una finestra propria (pywebview, WebKit di macOS) con l'interfaccia, servita
-da un piccolo server interno raggiungibile solo da questo computer. L'interfaccia
-fa scegliere i sottotitoli, prepara la scheda del film (personaggi, registri,
+L'interfaccia è servita da un piccolo server interno raggiungibile solo da questo
+computer. Fa scegliere i sottotitoli, prepara la scheda del film (personaggi, registri,
 glossario) che si può correggere, lancia la traduzione (traduci.py), mostra
 l'avanzamento e i risultati. Ogni lavoro è una sessione salvata, che si può
 riaprire in seguito.
 
-    ~/.venvs/ozu/bin/python app.py
+Di solito la finestra è Ozu.app, l'app nativa per Mac (mac/Ozu.swift): avvia questo
+programma con --servizio, cioè solo il server, e fa da sé finestra, menu, finestre di
+scelta dei file, trascinamento e conferma dell'uscita. Senza --servizio app.py apre
+una finestra propria (pywebview), come prima: resta come ripiego e per il Terminale.
+
+    ~/.venvs/ozu/bin/python app.py              # con la finestra di pywebview
+    ~/.venvs/ozu/bin/python app.py --servizio   # solo il server, per Ozu.app
 """
 
 import json
@@ -52,6 +57,10 @@ PREDEFINITI = {"lingua_sub": "auto", "lingua_audio": "auto", "note": "", "motore
                # Con il modello locale, rilettura di tutta la traduzione con un secondo modello (revisione.py).
                "rilettura": True}
 CODICE_TROVATI = 10  # traduci.py esce così quando la ricerca trova sottotitoli italiani
+# Con --servizio: Ozu.app riconosce questi codici di uscita del server (vedi mac/Ozu.swift).
+CODICE_RIAVVIO = 75  # dopo un aggiornamento: l'app si chiude senza chiedere e si riapre da sola
+CODICE_PORTA_OCCUPATA = 3  # un altro Ozu ha già il server aperto
+SERVIZIO = False  # True con --servizio: niente finestra di pywebview, la fa Ozu.app
 
 
 # --------------------------------------------------------------------------
@@ -474,8 +483,13 @@ def prerequisiti(subito: bool = False) -> dict:
 FINESTRA = None  # la finestra dell'app, per le finestre di scelta dei file
 
 
-def scegli(tipo: str):
-    """Finestra di scelta nativa; restituisce una lista di percorsi o None se annullata."""
+def scegli(tipo: str, dati: dict = None):
+    """Finestra di scelta nativa; restituisce una lista di percorsi o None se annullata. Con Ozu.app la
+    finestra la apre l'app, che manda i percorsi scelti nella richiesta («percorsi», vuoto se annullata)."""
+    if dati is not None and "percorsi" in dati:
+        return [str(p).rstrip("/") for p in dati["percorsi"] if p] or None
+    if SERVIZIO:
+        raise RuntimeError("La finestra di scelta la apre Ozu.app: aggiorna l'interfaccia e riprova.")
     import webview
     finestra_dialogo = getattr(webview, "FileDialog", None)
     if finestra_dialogo:
@@ -548,7 +562,7 @@ class Gestore(BaseHTTPRequestHandler):
         try:
             if url.path == "/api/sfoglia":
                 # La finestra di scelta resta aperta finché l'utente non sceglie: nessun lucchetto intanto.
-                scelti = scegli(dati.get("tipo", "file"))
+                scelti = scegli(dati.get("tipo", "file"), dati)
                 esiti, progetto = aggiungi_materiali(progetto["id"], scelti) if scelti else ([], progetto)
                 self._json({"esiti": esiti, "progetto": progetto})
             elif url.path == "/api/aggiungi":
@@ -563,7 +577,7 @@ class Gestore(BaseHTTPRequestHandler):
                     {k: dati[k] for k in CAMPI if k in dati}))
                 self._json({"ok": True, "progetto": progetto})
             elif url.path == "/api/cartella-uscita":
-                scelta = scegli("cartella")
+                scelta = scegli("cartella", dati)
                 if scelta:
                     progetto = modifica_sessione(progetto["id"], lambda p: p.update(out=scelta[0]))
                 self._json({"ok": True, "progetto": progetto})
@@ -591,7 +605,7 @@ class Gestore(BaseHTTPRequestHandler):
                         raise RuntimeError("Non c'è ancora una scheda da salvare.")
                     scrivi_atomico(Path(progetto["scheda"]), json.dumps(dati["scheda"], ensure_ascii=False, indent=2))
                 elif azione == "usa":
-                    scelta = scegli("file")
+                    scelta = scegli("file", dati)
                     if scelta:
                         json.loads(Path(scelta[0]).read_text(encoding="utf-8"))  # deve essere una scheda valida
                         progetto = modifica_sessione(progetto["id"], lambda p: p.update(scheda=scelta[0]))
@@ -643,7 +657,7 @@ class Gestore(BaseHTTPRequestHandler):
                 self._json({"ok": True, "trovati": LAVORO.codice == CODICE_TROVATI, "ricerca": esito,
                             "codice": LAVORO.codice})
             elif url.path == "/api/scegli-video":
-                scelta = scegli("file")
+                scelta = scegli("file", dati)
                 if scelta:
                     progetto = modifica_sessione(progetto["id"], lambda p: p.update(video=scelta[0]))
                 self._json({"ok": True, "progetto": progetto})
@@ -675,7 +689,11 @@ class Gestore(BaseHTTPRequestHandler):
                 elif azione == "riavvia":
                     self._json({"ok": True})
                     aggiornamenti.riavvia(PORTA)
-                    threading.Timer(0.3, FINESTRA.destroy).start()
+                    if SERVIZIO:
+                        # Ozu.app vede questo codice di uscita e si chiude senza chiedere; poi si riapre.
+                        threading.Timer(0.3, lambda: (LAVORO.ferma(), os._exit(CODICE_RIAVVIO))).start()
+                    else:
+                        threading.Timer(0.3, FINESTRA.destroy).start()
                 else:
                     self.send_error(404)
             elif url.path == "/api/pulizia":
@@ -868,8 +886,31 @@ def sistema_menu() -> None:
                 visti.add(titolo)
 
 
+def servizio() -> None:
+    """Solo il server dell'interfaccia, per Ozu.app: niente pywebview. Si ferma quando Ozu.app lo chiude
+    (SIGTERM), fermando prima un eventuale lavoro in corso (si potrà riprendere)."""
+    global SERVIZIO
+    SERVIZIO = True
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", PORTA), Gestore)
+    except OSError:
+        print("La porta di Ozu è già occupata: c'è un altro Ozu aperto.", flush=True)
+        sys.exit(CODICE_PORTA_OCCUPATA)
+
+    def fine(*_):
+        LAVORO.ferma()
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, fine)
+    signal.signal(signal.SIGINT, fine)
+    print(f"Server di Ozu pronto su 127.0.0.1:{PORTA} (versione {aggiornamenti.versione()})", flush=True)
+    server.serve_forever()
+
+
 def main():
     global FINESTRA
+    if "--servizio" in sys.argv[1:]:
+        return servizio()
     import webview
     try:
         server = ThreadingHTTPServer(("127.0.0.1", PORTA), Gestore)

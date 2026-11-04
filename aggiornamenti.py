@@ -21,6 +21,7 @@ Annuncio (ozu.json):
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -41,6 +42,9 @@ DATI = Path.home() / "Library" / "Application Support" / "Ozu"
 STATO = DATI / "aggiornamenti.json"
 PRECEDENTI = DATI / "versioni_precedenti"
 OGNI = 24 * 3600  # controllo automatico al massimo una volta al giorno
+# La copia di Ozu.app nella cartella Applicazioni dell'utente (quella che il Mac elenca tra le app): dopo un
+# aggiornamento la si sostituisce con la Ozu.app nuova del programma.
+COPIA_IN_APPLICAZIONI = Path.home() / "Applications" / "Ozu.app"
 # Cartelle dell'app che un aggiornamento non tocca mai.
 INTOCCABILI = {"prova", "dist", "__pycache__"}
 
@@ -288,8 +292,29 @@ def _installa_app(voce: dict) -> None:
                 (copia / rel).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(bersaglio, copia / rel)
             bersaglio.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(sorgente, bersaglio)
+            # Si copia accanto e poi si sostituisce il file, senza riscriverlo: Ozu.app è aperta mentre
+            # si aggiorna, e riscrivere il suo eseguibile mentre gira la farebbe chiudere di colpo.
+            provvisorio = bersaglio.with_name(bersaglio.name + ".aggiornamento")
+            shutil.copy2(sorgente, provvisorio)
+            os.replace(provvisorio, bersaglio)
+    _aggiorna_copia_in_applicazioni()
     INSTALLAZIONE["riavvia"] = True
+
+
+def _aggiorna_copia_in_applicazioni() -> None:
+    """Se c'è la copia di Ozu.app nella cartella Applicazioni, la si rimpiazza con quella appena installata.
+    Si prepara accanto e poi si scambia, così l'app aperta continua a girare fino al riavvio."""
+    originale = CARTELLA / "Ozu.app"
+    if not COPIA_IN_APPLICAZIONI.exists() or not originale.exists() or COPIA_IN_APPLICAZIONI.resolve() == originale.resolve():
+        return
+    nuova = COPIA_IN_APPLICAZIONI.with_name(".Ozu.app.nuova")
+    vecchia = COPIA_IN_APPLICAZIONI.with_name(".Ozu.app.vecchia")
+    for resto in (nuova, vecchia):
+        shutil.rmtree(resto, ignore_errors=True)
+    shutil.copytree(originale, nuova, symlinks=True)
+    os.replace(COPIA_IN_APPLICAZIONI, vecchia)
+    os.replace(nuova, COPIA_IN_APPLICAZIONI)
+    shutil.rmtree(vecchia, ignore_errors=True)
 
 
 def _installa_programmi(nomi: list) -> None:
@@ -383,8 +408,10 @@ def installa(voci: list) -> None:
 
 
 def riavvia(porta: int) -> None:
-    """Riapre Ozu appena questa istanza ha liberato la porta del server."""
-    bundle = CARTELLA / "Ozu.app"
+    """Riapre Ozu appena questa istanza ha liberato la porta del server: la stessa Ozu.app da cui è stato aperto
+    (Ozu.app lo dice al server con OZU_APP), che sia quella del programma o la copia nella cartella Applicazioni."""
+    scelta = Path(os.environ.get("OZU_APP", ""))
+    bundle = scelta if os.environ.get("OZU_APP") and scelta.exists() else CARTELLA / "Ozu.app"
     apri = ["open", str(bundle)] if bundle.exists() else [sys.executable, str(CARTELLA / "app.py")]
     script = (f"for i in $(seq 1 60); do nc -z 127.0.0.1 {porta} || break; sleep 0.5; done; "
               + " ".join(f"'{a}'" for a in apri))

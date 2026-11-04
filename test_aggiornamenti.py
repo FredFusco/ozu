@@ -52,5 +52,31 @@ class ProvaModelliLocali(unittest.TestCase):
         self.assertEqual(voci, [])
 
 
+class ProvaCopiaInApplicazioni(unittest.TestCase):
+    def test_sostituisce_la_copia_con_la_nuova(self):
+        import pathlib
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            nuova, copia = d / "programma" / "Ozu.app", d / "Applications" / "Ozu.app"
+            for app, testo in ((nuova, "nuova"), (copia, "vecchia")):
+                (app / "Contents").mkdir(parents=True)
+                (app / "Contents" / "Info.plist").write_text(testo)
+            with mock.patch.object(aggiornamenti, "CARTELLA", nuova.parent), \
+                    mock.patch.object(aggiornamenti, "COPIA_IN_APPLICAZIONI", copia):
+                aggiornamenti._aggiorna_copia_in_applicazioni()
+            self.assertEqual((copia / "Contents" / "Info.plist").read_text(), "nuova")
+            self.assertEqual(sorted(p.name for p in copia.parent.iterdir()), ["Ozu.app"])  # niente avanzi
+
+    def test_senza_copia_non_fa_niente(self):
+        import pathlib
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            copia = pathlib.Path(d) / "Applications" / "Ozu.app"
+            with mock.patch.object(aggiornamenti, "COPIA_IN_APPLICAZIONI", copia):
+                aggiornamenti._aggiorna_copia_in_applicazioni()
+            self.assertFalse(copia.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

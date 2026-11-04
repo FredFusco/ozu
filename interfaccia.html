@@ -369,7 +369,18 @@ const NOMI_MOTORI = {claude: "Claude", locale: "Modello locale", deepl: "DeepL",
 const ORDINE = ["claude", "locale", "deepl", "google"];
 let STATO = null, LINGUE = {}, vista = "materiali", schedaModificata = false;
 
+/* Con Ozu.app (mac/Ozu.swift) le finestre di scelta dei file le apre l'app nativa: i percorsi scelti
+   partono con la richiesta («percorsi», vuoto se annullata). Con la finestra di pywebview le apre il server. */
+const NATIVO = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ozu);
+const SCELTE = {
+  "/api/sfoglia": d => d.tipo === "cartella" ? {tipo: "cartella"} : {tipo: "file", multipli: true},
+  "/api/cartella-uscita": () => ({tipo: "cartella"}),
+  "/api/scegli-video": () => ({tipo: "video"}),
+  "/api/scheda": d => d.azione === "usa" ? {tipo: "scheda"} : null,
+};
 async function api(percorso, dati) {
+  const scelta = NATIVO && SCELTE[percorso] && SCELTE[percorso](dati || {});
+  if (scelta) dati = {...dati, percorsi: await window.webkit.messageHandlers.ozu.postMessage({scegli: scelta})};
   const r = await fetch(percorso, dati === undefined ? {} : {method: "POST", body: JSON.stringify(dati)});
   const j = await r.json();
   if (!r.ok || j.errore) throw new Error(j.errore || "Errore");
@@ -629,6 +640,11 @@ const zona = $("#zona");
 document.addEventListener("dragover", e => { e.preventDefault(); zona.classList.add("sopra"); });
 document.addEventListener("dragleave", e => { if (!e.relatedTarget) zona.classList.remove("sopra"); });
 document.addEventListener("drop", e => { e.preventDefault(); zona.classList.remove("sopra"); });  // i percorsi arrivano dal lato nativo
+// File lasciati sulla finestra o aperti dal Finder con Ozu.app: l'app nativa manda i percorsi completi.
+async function aggiungiPercorsi(percorsi) {
+  try { const j = await api("/api/aggiungi", {percorsi}); materialiAggiunti(j.esiti); }
+  catch (e) { alert(e.message); }
+}
 function materialiAggiunti(esiti) {
   const ok = esiti.filter(e => e.ok).length, problemi = esiti.filter(e => e.problema);
   $("#esito-arrivo").innerHTML = (ok ? `Aggiunti ${ok} file. ` : "") + problemi.map(e => `<span class="problema">${esc(e.nome)}: ${esc(e.problema)}</span>`).join(" · ");
