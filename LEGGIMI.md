@@ -27,7 +27,7 @@ Se il motore scelto non è disponibile, Ozu passa al migliore tra quelli che ven
 
 ## Uso
 
-Doppio clic su **Ozu.app** (che sta in questa cartella). Al primo avvio su un Mac nuovo prepara l'ambiente `~/.venvs/ozu` con pywebview e anthropic.
+Ozu è un'app del Mac: sta nella cartella Applicazioni dell'utente (`~/Applications/Ozu.app`), la trovi con Spotlight e la puoi tenere nel Dock. Questa cartella contiene solo il codice sorgente, da cui si costruisce e si installa l'app con `mac/compila.sh --installa`. Al primo avvio su un Mac nuovo Ozu prepara da sé l'ambiente Python `~/.venvs/ozu` (pywebview e anthropic).
 
 Da Terminale:
 
@@ -84,7 +84,7 @@ Usano Ollama con un altro modello (Qwen3-VL 30B), quindi se lavorassero insieme 
 
 **Ozu.app è un'app nativa per Mac** (Swift, sorgente in `mac/Ozu.swift`, si compila con `mac/compila.sh`; bastano gli strumenti da riga di comando di Xcode). Si apre subito, ha menu e scorciatoie native, finestre di scelta dei file del Mac, la conferma dell'uscita con il logo di Ozu, ricorda posizione e misura della finestra e riceve i sottotitoli, i video e le cartelle trascinati sulla finestra o sull'icona nel Dock, o aperti dal Finder con *Apri con › Ozu* (Ozu non diventa l'app predefinita per quei file). Il motore resta in Python: l'app avvia `app.py --servizio`, cioè solo il server dell'interfaccia, e lo ferma all'uscita; se il motore si ferma da solo, l'app propone di riavviarlo. Dopo un aggiornamento il server esce con il codice 75 e l'app si chiude e si riapre senza chiedere. `python app.py` senza `--servizio` apre ancora la finestra di pywebview, come prima: resta come ripiego e per il Terminale.
 
-Perché Ozu compaia tra le app del Mac (Spotlight, Launchpad), una copia di `Ozu.app` sta in `~/Applications`. Il programma resta nella sua cartella: ogni volta che si apre, l'Ozu.app del programma annota dove sta (`~/Library/Application Support/Ozu/cartella_programma`, lo fa anche `mac/compila.sh`) e la copia lo legge da lì. Se la copia è diversa (dopo un aggiornamento o una nuova compilazione) viene rimpiazzata da sola; dopo un aggiornamento Ozu si riapre dalla stessa copia da cui era stato aperto.
+**Ozu.app è completa:** dentro, in `Contents/Resources/programma`, c'è tutto il programma (i file che `.gitignore` ammette); fuori restano solo l'ambiente Python (`~/.venvs/ozu`) e i dati (`~/Library/Application Support/Ozu`). `mac/compila.sh` la costruisce in `~/Library/Caches/Ozu/` (fuori da Drive, perché Spotlight non la trovi due volte) e con `--installa` la mette in `~/Applications`, scambiandola con quella che c'è. Il motore gira con `PYTHONDONTWRITEBYTECODE=1`, così non scrive file dentro l'app e la firma resta valida. Un aggiornamento scarica Ozu.app nuova, la scambia con quella installata e mette la vecchia in `~/Library/Application Support/Ozu/versioni_precedenti/`. Dal codice sorgente gli aggiornamenti non si installano: lì si usano git e `mac/compila.sh --installa`.
 
 Il resto è come in Vertov e Murnau: `app.py` serve `interfaccia.html` su `127.0.0.1:8767`. Il lavoro vero lo fa `traduci.py` in un processo separato, che comunica l'avanzamento con righe `@@`. Gli altri moduli: `adattamento.py` (istruzioni, scheda, traduzione, revisione, stime), i motori `motore_locale.py` (Ollama), `motore_claude.py` (API di Anthropic), `motore_deepl.py` e `motore_google.py`, `motori.py` (elenco dei motori e ripiego), `chiavi.py` (chiavi API), `sottotitoli.py` (formati, vincoli, battute fuori posto), `revisione.py` (rilettura con il secondo modello), `allineamento.py` (tempi dei sottotitoli scaricati), `ricerca.py`, `banco_di_prova.py`, `aggiornamenti.py`, `pulizia.py` e `icona/genera_icona.py`.
 
@@ -107,5 +107,5 @@ Per ogni prova misura i tempi di traduzione e di rilettura, la somiglianza al ri
 
 - `aggiornamenti.py` controlla Ozu (annuncio all'indirizzo in `aggiornamenti.json`), ffmpeg e Ollama (Homebrew), i due modelli locali (Gemma 4 26B che traduce, Qwen 3.8 27B che rilegge) e le librerie Python dell'ambiente. L'app chiede prima di installare; se le librerie non si caricano più, tornano alla versione precedente.
 - L'annuncio è `https://github.com/FredFusco/ozu/releases/latest/download/ozu.json`. Prima di adottare un aggiornamento dei modelli, conviene passarlo dal banco di prova.
-- Per pubblicare una versione: `git commit` e `git push`, poi `python prepara_aggiornamento.py 1.1.0 "Novità…" --pubblica`.
+- Per pubblicare una versione: `git commit` e `git push`, poi `python prepara_aggiornamento.py 1.4.1 "Novità…" --pubblica` (scrive VERSIONE, costruisce Ozu.app con `mac/compila.sh` e pubblica lo zip con dentro l'app). Per avere la versione nuova anche su questo Mac: `mac/compila.sh --installa`.
 - Su GitHub finiscono solo i file del programma ammessi da `.gitignore`, mai sottotitoli, video o schede dei film.

@@ -14,9 +14,10 @@
 !caratteri/Mourier.otf
 !caratteri/LICENSE-Mourier.txt
 !icona/genera_icona.py
-!Ozu.app/**
 !mac/Ozu.swift
 !mac/compila.sh
+!mac/Info.plist
+!mac/ozu.icns
 # Mai, nemmeno se dentro ci fossero file ammessi:
 prova/
 file di lavoro/

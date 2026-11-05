@@ -3,9 +3,14 @@
     ~/.venvs/ozu/bin/python -m unittest test_aggiornamenti -v
 """
 
+import hashlib
 import io
 import json
+import os
+import tempfile
 import unittest
+import zipfile
+from pathlib import Path
 from unittest import mock
 
 import aggiornamenti
@@ -52,30 +57,49 @@ class ProvaModelliLocali(unittest.TestCase):
         self.assertEqual(voci, [])
 
 
-class ProvaCopiaInApplicazioni(unittest.TestCase):
-    def test_sostituisce_la_copia_con_la_nuova(self):
-        import pathlib
-        import tempfile
-        with tempfile.TemporaryDirectory() as d:
-            d = pathlib.Path(d)
-            nuova, copia = d / "programma" / "Ozu.app", d / "Applications" / "Ozu.app"
-            for app, testo in ((nuova, "nuova"), (copia, "vecchia")):
-                (app / "Contents").mkdir(parents=True)
-                (app / "Contents" / "Info.plist").write_text(testo)
-            with mock.patch.object(aggiornamenti, "CARTELLA", nuova.parent), \
-                    mock.patch.object(aggiornamenti, "COPIA_IN_APPLICAZIONI", copia):
-                aggiornamenti._aggiorna_copia_in_applicazioni()
-            self.assertEqual((copia / "Contents" / "Info.plist").read_text(), "nuova")
-            self.assertEqual(sorted(p.name for p in copia.parent.iterdir()), ["Ozu.app"])  # niente avanzi
+class ProvaInstallazioneApp(unittest.TestCase):
+    """L'aggiornamento di Ozu sostituisce tutta Ozu.app; quella di prima va in versioni_precedenti."""
 
-    def test_senza_copia_non_fa_niente(self):
-        import pathlib
-        import tempfile
+    def pacchetto(self, cartella, testo: str) -> bytes:
+        app = cartella / "nuova" / "Ozu.app"
+        for rel, contenuto in (("Contents/MacOS/Ozu", "eseguibile"), ("Contents/Resources/programma/app.py", testo)):
+            (app / rel).parent.mkdir(parents=True, exist_ok=True)
+            (app / rel).write_text(contenuto)
+        (app / "Contents/MacOS/Ozu").chmod(0o755)
+        dati = io.BytesIO()
+        with zipfile.ZipFile(dati, "w") as z:
+            for f in app.rglob("*"):
+                if f.is_file():
+                    z.write(f, "Ozu.app/" + str(f.relative_to(app)))
+        return dati.getvalue()
+
+    def test_sostituisce_l_app_e_conserva_la_vecchia(self):
         with tempfile.TemporaryDirectory() as d:
-            copia = pathlib.Path(d) / "Applications" / "Ozu.app"
-            with mock.patch.object(aggiornamenti, "COPIA_IN_APPLICAZIONI", copia):
-                aggiornamenti._aggiorna_copia_in_applicazioni()
-            self.assertFalse(copia.exists())
+            d = Path(d)
+            installata = d / "Applications" / "Ozu.app"
+            (installata / "Contents/Resources/programma").mkdir(parents=True)
+            (installata / "Contents/Resources/programma/app.py").write_text("vecchia")
+            zip_ = self.pacchetto(d, "nuova")
+            risposta = mock.MagicMock()
+            risposta.__enter__.return_value = risposta
+            risposta.headers = {"Content-Length": str(len(zip_))}
+            risposta.read.side_effect = [zip_, b""]
+            voce = {"nuova": "9.9.9", "pacchetto": "https://esempio.prova/ozu.zip",
+                    "sha256": hashlib.sha256(zip_).hexdigest()}
+            with mock.patch.object(aggiornamenti, "APP", installata), \
+                    mock.patch.object(aggiornamenti, "PRECEDENTI", d / "precedenti"), \
+                    mock.patch.object(aggiornamenti, "versione", return_value="1.0.0"), \
+                    mock.patch("aggiornamenti.urllib.request.urlopen", return_value=risposta):
+                aggiornamenti._installa_app(voce)
+            self.assertEqual((installata / "Contents/Resources/programma/app.py").read_text(), "nuova")
+            self.assertTrue(os.access(installata / "Contents/MacOS/Ozu", os.X_OK))
+            self.assertEqual((d / "precedenti/1.0.0/Ozu.app/Contents/Resources/programma/app.py").read_text(), "vecchia")
+            self.assertEqual(sorted(p.name for p in installata.parent.iterdir()), ["Ozu.app"])  # niente avanzi
+
+    def test_dal_codice_sorgente_non_si_installa(self):
+        with mock.patch.object(aggiornamenti, "APP", None):
+            with self.assertRaises(RuntimeError):
+                aggiornamenti._installa_app({"nuova": "9.9.9"})
 
 
 if __name__ == "__main__":

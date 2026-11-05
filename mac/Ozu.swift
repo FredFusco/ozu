@@ -11,63 +11,27 @@
 import AppKit
 import WebKit
 
-let PORTA = 8767  // la stessa di app.py: Vertov e Murnau riconoscono Ozu da qui
+let PORTA = 8767  // la stessa di app.py (Vertov usa 8765, Murnau 8766)
 let INDIRIZZO = URL(string: "http://127.0.0.1:\(PORTA)/")!
 let CODICE_RIAVVIO: Int32 = 75  // app.py --servizio dopo un aggiornamento: ci si chiude senza chiedere
 let CODICE_PORTA_OCCUPATA: Int32 = 3  // c'è già un altro Ozu aperto (per esempio dal Terminale)
 
 let CASA = FileManager.default.homeDirectoryForCurrentUser
 let DATI = CASA.appendingPathComponent("Library/Application Support/Ozu")
-// Dove sta il programma (app.py e il resto): accanto all'app, oppure, per la copia nella cartella Applicazioni
-// (quella che il Mac elenca tra le app), dove l'ha annotato l'ultima volta l'app che sta nel programma.
-let SEGNAPOSTO = DATI.appendingPathComponent("cartella_programma")
+// Dove sta il programma (app.py e il resto): dentro l'app, in Contents/Resources/programma (così Ozu.app è
+// completa e sta da sola nella cartella Applicazioni); oppure accanto all'app, per provare il codice sorgente.
 let CARTELLA = trovaProgramma()
-// La copia di Ozu.app nella cartella Applicazioni dell'utente: si tiene uguale a quella del programma.
-let COPIA_IN_APPLICAZIONI = CASA.appendingPathComponent("Applications/Ozu.app")
-
-func trovaProgramma() -> URL {
-    let accanto = Bundle.main.bundleURL.deletingLastPathComponent()
-    let gestore = FileManager.default
-    if gestore.fileExists(atPath: accanto.appendingPathComponent("app.py").path) {
-        try? gestore.createDirectory(at: DATI, withIntermediateDirectories: true)
-        try? accanto.path.write(to: SEGNAPOSTO, atomically: true, encoding: .utf8)
-        return accanto
-    }
-    if let annotata = try? String(contentsOf: SEGNAPOSTO, encoding: .utf8) {
-        let cartella = URL(fileURLWithPath: annotata.trimmingCharacters(in: .whitespacesAndNewlines))
-        if gestore.fileExists(atPath: cartella.appendingPathComponent("app.py").path) { return cartella }
-    }
-    return accanto
-}
-
-/// Se c'è la copia nella cartella Applicazioni ed è diversa da Ozu.app del programma (per esempio dopo un
-/// aggiornamento), la si sostituisce con una copia nuova. Un'app aperta continua a girare con il suo file.
-func allineaCopiaInApplicazioni() {
-    let gestore = FileManager.default
-    let originale = CARTELLA.appendingPathComponent("Ozu.app")
-    guard originale.standardizedFileURL.path != COPIA_IN_APPLICAZIONI.standardizedFileURL.path,
-          gestore.fileExists(atPath: COPIA_IN_APPLICAZIONI.path), gestore.fileExists(atPath: originale.path) else { return }
-    let parti = ["Contents/MacOS/Ozu", "Contents/Info.plist", "Contents/Resources/ozu.icns"]
-    let uguali = parti.allSatisfy { parte in
-        gestore.contentsEqual(atPath: originale.appendingPathComponent(parte).path,
-                              andPath: COPIA_IN_APPLICAZIONI.appendingPathComponent(parte).path)
-    }
-    guard !uguali else { return }
-    let nuova = COPIA_IN_APPLICAZIONI.deletingLastPathComponent().appendingPathComponent(".Ozu.app.nuova")
-    do {
-        try? gestore.removeItem(at: nuova)
-        try gestore.copyItem(at: originale, to: nuova)
-        _ = try gestore.replaceItemAt(COPIA_IN_APPLICAZIONI, withItemAt: nuova)
-        annota("aggiornata la copia di Ozu.app nella cartella Applicazioni")
-    } catch {
-        try? gestore.removeItem(at: nuova)
-        annota("non riesco ad aggiornare la copia nella cartella Applicazioni: \(error.localizedDescription)")
-    }
-}
 let REGISTRO = DATI.appendingPathComponent("ozu.log")
 let PREFERENZE = DATI.appendingPathComponent("preferenze.json")
+// L'ambiente Python di Ozu: fuori dall'app, così l'app resta piccola e il primo avvio lo prepara da sé.
 let AMBIENTE = CASA.appendingPathComponent(".venvs/ozu")
 let PYTHON = AMBIENTE.appendingPathComponent("bin/python")
+
+func trovaProgramma() -> URL {
+    let dentro = Bundle.main.resourceURL!.appendingPathComponent("programma")
+    if FileManager.default.fileExists(atPath: dentro.appendingPathComponent("app.py").path) { return dentro }
+    return Bundle.main.bundleURL.deletingLastPathComponent()
+}
 
 // I colori della carta dell'interfaccia (--carta in interfaccia.html), chiaro e scuro.
 let CARTA = NSColor(name: nil) { aspetto in
@@ -157,6 +121,8 @@ final class Motore {
         ambiente["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + (ambiente["PATH"] ?? "/usr/bin:/bin")
         ambiente["PYTHONUNBUFFERED"] = "1"
         ambiente["OZU_APP"] = Bundle.main.bundleURL.path  // dopo un aggiornamento app.py riapre questa stessa app
+        // Niente file .pyc scritti dentro l'app: la cambierebbero e ne romperebbero la firma.
+        ambiente["PYTHONDONTWRITEBYTECODE"] = "1"
         p.environment = ambiente
         collegaRegistro(p)
         p.terminationHandler = { [weak self] fine in
@@ -256,12 +222,10 @@ final class Ozu: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
         NSApp.mainMenu = barraDeiMenu()
         creaFinestra()
         guard FileManager.default.fileExists(atPath: CARTELLA.appendingPathComponent("app.py").path) else {
-            errore("Non trovo il programma di Ozu.",
-                   "Apri una volta Ozu.app dalla cartella del programma (quella con app.py): da lì in poi Ozu si apre anche da qui.",
-                   soloEsci: true)
+            errore("Ozu.app è incompleta: manca il programma.",
+                   "Reinstalla Ozu (dalla cartella del codice: mac/compila.sh --installa).", soloEsci: true)
             return
         }
-        DispatchQueue.global(qos: .utility).async { allineaCopiaInApplicazioni() }
         motore.finito = { [weak self] codice in self?.motoreFermato(codice) }
         if motore.ambientePronto {
             avviaMotore()

@@ -3,9 +3,10 @@
 Si controllano:
 - Ozu stesso: un file di annuncio (JSON) pubblicato online, il cui indirizzo è
   in aggiornamenti.json accanto all'app, dice qual è l'ultima versione e dove
-  scaricarla. Il pacchetto è uno zip con i file dell'app, verificato con SHA-256;
-  i file sostituiti vengono conservati per poter tornare indietro. Senza indirizzo
-  questa parte si salta;
+  scaricarla. Il pacchetto è uno zip con Ozu.app completa (l'app nativa con dentro il
+  programma), verificato con SHA-256: sostituisce l'app installata, e quella di prima
+  resta in versioni_precedenti per poter tornare indietro. Senza indirizzo questa parte
+  si salta;
 - i programmi installati con Homebrew: ffmpeg (legge i sottotitoli dentro i video) e
   Ollama (fa girare il modello locale);
 - le librerie Python dell'ambiente di Ozu (pywebview, anthropic): dopo l'aggiornamento
@@ -42,11 +43,10 @@ DATI = Path.home() / "Library" / "Application Support" / "Ozu"
 STATO = DATI / "aggiornamenti.json"
 PRECEDENTI = DATI / "versioni_precedenti"
 OGNI = 24 * 3600  # controllo automatico al massimo una volta al giorno
-# La copia di Ozu.app nella cartella Applicazioni dell'utente (quella che il Mac elenca tra le app): dopo un
-# aggiornamento la si sostituisce con la Ozu.app nuova del programma.
-COPIA_IN_APPLICAZIONI = Path.home() / "Applications" / "Ozu.app"
-# Cartelle dell'app che un aggiornamento non tocca mai.
-INTOCCABILI = {"prova", "dist", "__pycache__"}
+# Il programma sta dentro Ozu.app, in Contents/Resources/programma (vedi mac/compila.sh): un aggiornamento
+# sostituisce tutta l'app. APP è None quando si usa il codice sorgente (che si aggiorna con git).
+PROGRAMMA_NELL_APP = Path("Contents") / "Resources" / "programma"
+APP = CARTELLA.parents[2] if CARTELLA.parent.name == "Resources" and CARTELLA.parents[2].suffix == ".app" else None
 
 OLLAMA = motore_locale.OLLAMA
 REGISTRO = "https://registry.ollama.ai/v2"
@@ -245,6 +245,9 @@ def _fase(fase: str, fatti: int = 0, totale: int = 0) -> None:
 
 
 def _installa_app(voce: dict) -> None:
+    if APP is None:
+        raise RuntimeError("Questo è il codice sorgente di Ozu, non l'app installata: si aggiorna con git e "
+                           "mac/compila.sh --installa.")
     _fase("Scarico Ozu " + voce["nuova"] + " (KB)")
     if not _sicuro(voce["pacchetto"]):
         raise RuntimeError("Il pacchetto deve essere scaricato via https.")
@@ -274,47 +277,29 @@ def _installa_app(voce: dict) -> None:
                 permessi = info.external_attr >> 16 & 0o777
                 if permessi and not info.is_dir():
                     (estratti / info.filename).chmod(permessi)
-        radice = estratti
-        voci = [p for p in estratti.iterdir() if p.name != "__MACOSX"]
-        if len(voci) == 1 and voci[0].is_dir():
-            radice = voci[0]
-        if not (radice / "app.py").exists() or not (radice / "traduci.py").exists():
+        nuova = estratti / "Ozu.app"
+        if not (nuova / "Contents" / "MacOS" / "Ozu").exists() or not (nuova / PROGRAMMA_NELL_APP / "app.py").exists():
             raise RuntimeError("Il pacchetto non contiene Ozu.")
 
         _fase("Installo Ozu " + voce["nuova"])
+        # La nuova Ozu.app si prepara accanto a quella in uso e poi si scambiano: l'Ozu aperto continua a girare
+        # fino al riavvio. Quella di prima va in versioni_precedenti, per poter tornare indietro.
+        accanto = APP.with_name(".Ozu.app.nuova")
+        shutil.rmtree(accanto, ignore_errors=True)
+        shutil.copytree(nuova, accanto, symlinks=True)
         copia = PRECEDENTI / versione()
-        for sorgente in sorted(radice.rglob("*")):
-            rel = sorgente.relative_to(radice)
-            if rel.parts[0] in INTOCCABILI or sorgente.name == ".DS_Store" or sorgente.is_dir():
-                continue
-            bersaglio = CARTELLA / rel
-            if bersaglio.exists():
-                (copia / rel).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(bersaglio, copia / rel)
-            bersaglio.parent.mkdir(parents=True, exist_ok=True)
-            # Si copia accanto e poi si sostituisce il file, senza riscriverlo: Ozu.app è aperta mentre
-            # si aggiorna, e riscrivere il suo eseguibile mentre gira la farebbe chiudere di colpo.
-            provvisorio = bersaglio.with_name(bersaglio.name + ".aggiornamento")
-            shutil.copy2(sorgente, provvisorio)
-            os.replace(provvisorio, bersaglio)
-    _aggiorna_copia_in_applicazioni()
+        shutil.rmtree(copia, ignore_errors=True)
+        copia.mkdir(parents=True)
+        try:
+            os.replace(APP, copia / "Ozu.app")
+        except OSError:  # su un altro disco non si può spostare: la si copia e poi la si toglie
+            vecchia = APP.with_name(".Ozu.app.vecchia")
+            shutil.rmtree(vecchia, ignore_errors=True)
+            os.replace(APP, vecchia)
+            shutil.copytree(vecchia, copia / "Ozu.app", symlinks=True)
+            shutil.rmtree(vecchia, ignore_errors=True)
+        os.replace(accanto, APP)
     INSTALLAZIONE["riavvia"] = True
-
-
-def _aggiorna_copia_in_applicazioni() -> None:
-    """Se c'è la copia di Ozu.app nella cartella Applicazioni, la si rimpiazza con quella appena installata.
-    Si prepara accanto e poi si scambia, così l'app aperta continua a girare fino al riavvio."""
-    originale = CARTELLA / "Ozu.app"
-    if not COPIA_IN_APPLICAZIONI.exists() or not originale.exists() or COPIA_IN_APPLICAZIONI.resolve() == originale.resolve():
-        return
-    nuova = COPIA_IN_APPLICAZIONI.with_name(".Ozu.app.nuova")
-    vecchia = COPIA_IN_APPLICAZIONI.with_name(".Ozu.app.vecchia")
-    for resto in (nuova, vecchia):
-        shutil.rmtree(resto, ignore_errors=True)
-    shutil.copytree(originale, nuova, symlinks=True)
-    os.replace(COPIA_IN_APPLICAZIONI, vecchia)
-    os.replace(nuova, COPIA_IN_APPLICAZIONI)
-    shutil.rmtree(vecchia, ignore_errors=True)
 
 
 def _installa_programmi(nomi: list) -> None:
@@ -411,8 +396,8 @@ def riavvia(porta: int) -> None:
     """Riapre Ozu appena questa istanza ha liberato la porta del server: la stessa Ozu.app da cui è stato aperto
     (Ozu.app lo dice al server con OZU_APP), che sia quella del programma o la copia nella cartella Applicazioni."""
     scelta = Path(os.environ.get("OZU_APP", ""))
-    bundle = scelta if os.environ.get("OZU_APP") and scelta.exists() else CARTELLA / "Ozu.app"
-    apri = ["open", str(bundle)] if bundle.exists() else [sys.executable, str(CARTELLA / "app.py")]
+    bundle = scelta if os.environ.get("OZU_APP") and scelta.exists() else APP
+    apri = ["open", str(bundle)] if bundle and bundle.exists() else [sys.executable, str(CARTELLA / "app.py")]
     script = (f"for i in $(seq 1 60); do nc -z 127.0.0.1 {porta} || break; sleep 0.5; done; "
               + " ".join(f"'{a}'" for a in apri))
     subprocess.Popen(["/bin/sh", "-c", script], start_new_session=True,
